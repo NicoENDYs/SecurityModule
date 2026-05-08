@@ -19,6 +19,7 @@ security-testing-template/
 │   ├── api-security.md               # OWASP API Security Top 10 (2023)
 │   └── docker-hardening.md           # CIS Docker Benchmark v1.6
 ├── scripts/
+│   ├── scan-full-dockerized.sh       # Orchestrator: build → trivy → compose up → ZAP → bench → summary
 │   ├── scan-trivy.sh                 # Local Trivy scan (fs | image | repo)
 │   ├── scan-zap-baseline.sh          # Local ZAP baseline or full scan
 │   └── docker-bench.sh               # Docker Bench for Security
@@ -36,7 +37,9 @@ security-testing-template/
 ├── dast/
 │   └── zap-full-scan.conf            # ZAP active scan configuration
 └── docs/
-    └── como-usarlo-en-nuevo-proyecto.md
+    ├── como-usarlo-en-nuevo-proyecto.md  # Submodule setup + GitHub Actions integration
+    ├── proyecto-dockerizado.md           # Full guide for Dockerized apps
+    └── sin-github.md                     # GitLab CI, Bitbucket, Jenkins, local-only
 ```
 
 ---
@@ -56,32 +59,55 @@ git submodule add https://github.com/nicoendys/securitymodule security
 git submodule update --init --recursive
 ```
 
-### 2. Run a Trivy filesystem scan
+### 2. Full scan of a Dockerized project (recommended)
 
 ```bash
-bash security/scripts/scan-trivy.sh fs .
+bash security/scripts/scan-full-dockerized.sh \
+  --project-root . \
+  --url http://localhost:3000 \
+  --compose-file docker-compose.yml \
+  --service app
+```
+
+This single command: runs SAST → builds the image → scans it with Trivy → starts compose → runs ZAP → runs Docker Bench → writes a `summary.txt` with PASS/WARN/FAIL per tool.
+
+### 3. Run individual scans
+
+```bash
+bash security/scripts/scan-trivy.sh fs .        # filesystem
+bash security/scripts/scan-trivy.sh image app:latest  # Docker image
 ```
 
 Reports are saved to `security/templates/reports/`.
 
-### 3. Run a ZAP baseline scan against a staging URL
+### 4. Run a ZAP baseline scan against a staging URL
 
 ```bash
 bash security/scripts/scan-zap-baseline.sh https://staging.example.com
 ```
 
-### 4. Run npm audit + Semgrep on your project
+### 5. Run npm audit + Semgrep on your project
 
 ```bash
 # From your project root
 bash security/node-web/audit.sh .
 ```
 
-### 5. Run Docker Bench for Security
+### 6. Run Docker Bench for Security
 
 ```bash
 bash security/scripts/docker-bench.sh
 ```
+
+---
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [`docs/como-usarlo-en-nuevo-proyecto.md`](docs/como-usarlo-en-nuevo-proyecto.md) | Add as git submodule, run local scans, integrate GitHub Actions |
+| [`docs/proyecto-dockerizado.md`](docs/proyecto-dockerizado.md) | Full workflow for Dockerized apps: build → scan → ZAP → summary report |
+| [`docs/sin-github.md`](docs/sin-github.md) | Use without GitHub: GitLab CI, Bitbucket Pipelines, Jenkins, local-only |
 
 ---
 
