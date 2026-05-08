@@ -1,0 +1,134 @@
+# docker-compose.yml — Secure security-testing lab environment.
+# Provides isolated containers for running DAST and SAST tools against a
+# target application without exposing them to the public internet.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up -d          # start lab
+#   docker compose -f docker/docker-compose.yml down -v        # stop & clean
+#
+# Override the target URL:
+#   TARGET_URL=https://staging.example.com docker compose ... up
+
+version: "3.9"
+
+networks:
+  security-lab:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  zap-reports:
+  trivy-cache:
+
+services:
+  # ── OWASP ZAP — DAST scanner ─────────────────────────────────────────────────
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: security-lab-zap
+    networks:
+      - security-lab
+    volumes:
+      - zap-reports:/zap/wrk/:rw
+      - ../templates/zap/rules.tsv:/zap/rules.tsv:ro
+    environment:
+      - ZAP_PORT=8090
+    command: >
+      zap-baseline.py
+        -t ${TARGET_URL:-http://target:3000}
+        -r zap-baseline-report.html
+        -J zap-baseline-report.json
+        -c /zap/rules.tsv
+        -I
+    depends_on:
+      - target
+    profiles:
+      - dast
+
+  # ── Trivy — image / filesystem scanner ──────────────────────────────────────
+  trivy:
+    image: aquasec/trivy:0.61.0
+    container_name: security-lab-trivy
+    networks:
+      - security-lab
+    volumes:
+      - trivy-cache:/root/.cache/trivy
+      - ../:/project:ro
+      - ../templates/reports:/reports:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: >
+      fs
+        --severity HIGH,CRITICAL
+        --format json
+        --output /reports/trivy-compose-scan.json
+        /project
+    profiles:
+      - sast
+
+  # ── Semgrep — SAST for JS/TS ─────────────────────────────────────────────────
+  semgrep:
+    image: returntocorp/semgrep:latest
+    container_name: security-lab-semgrep
+    networks:
+      - security-lab
+    volumes:
+      - ../:/src:ro
+      - ../node-web/semgrep.yml:/semgrep.yml:ro
+      - ../templates/reports:/reports:rw
+    command: >
+      semgrep
+        --config /semgrep.yml
+        --config p/owasp-top-ten
+        --json
+        --output /reports/semgrep-compose-scan.json
+        /src
+    profiles:
+      - sast
+
+  # ── Dummy target (replace with your actual app for integration tests) ────────
+  target:
+    image: nginx:alpine
+    container_name: security-lab-target
+    networks:
+      - security-lab
+    ports:
+      - "3000:80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    profiles:
+      - dast
+      - target
+
+  # ── Report viewer (simple HTTP server for browsing HTML reports) ─────────────
+  report-viewer:
+    image: nginx:alpine
+    container_name: security-lab-reports
+    networks:
+      - security-lab
+    ports:
+      - "8888:80"
+    volumes:
+      - ../templates/reports:/usr/share/nginx/html:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    profiles:
+      - reports

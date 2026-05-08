@@ -1,0 +1,19 @@
+# Scan reports (ephemeral artifacts — not tracked in git)
+templates/reports/*.json
+templates/reports/*.html
+templates/reports/*.txt
+templates/reports/*.log
+templates/reports/*.md
+
+# Keep the directory
+!templates/reports/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

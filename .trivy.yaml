@@ -1,0 +1,37 @@
+# .trivy.yaml — Default Trivy configuration for this repository.
+# Reference: https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
+
+scan:
+  # Only report unfixed CVEs as fixable (reduces noise)
+  ignore-unfixed: true
+
+severity:
+  - HIGH
+  - CRITICAL
+
+# Skip paths that don't contain deployable artifacts
+skip-dirs:
+  - .git
+  - node_modules
+  - .github
+  - docs
+  - checklists
+
+# Vulnerability types to scan
+vuln-type:
+  - os
+  - library
+
+# Security checks for IaC / config scanning
+checks:
+  - vuln
+  - secret
+  - misconfig
+
+# Secret scanning
+secret:
+  config: ""
+
+# Output
+format: table
+# Override with --format sarif in CI

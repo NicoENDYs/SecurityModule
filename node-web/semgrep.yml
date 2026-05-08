@@ -1,0 +1,197 @@
+# Semgrep configuration for Node.js / React / TypeScript projects.
+# Run locally: semgrep --config node-web/semgrep.yml .
+# Run in CI:   semgrep ci --config node-web/semgrep.yml
+#
+# Docs: https://semgrep.dev/docs/
+
+rules:
+  # ── Injection ────────────────────────────────────────────────────────────────
+
+  - id: no-eval
+    patterns:
+      - pattern: eval(...)
+      - pattern-not: eval("use strict")
+    message: "Avoid eval() — it executes arbitrary code and is an injection vector."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-95"
+
+  - id: no-new-function
+    pattern: new Function(...)
+    message: "new Function() is equivalent to eval(). Avoid dynamic code execution."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-95"
+
+  - id: no-child-process-exec-with-variable
+    pattern: |
+      require('child_process').exec($CMD, ...)
+    message: "child_process.exec() with a variable is vulnerable to command injection. Use execFile() or spawn() with an args array."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-78"
+
+  - id: no-child-process-execsync-with-variable
+    pattern: |
+      require('child_process').execSync($CMD, ...)
+    message: "execSync() with a variable is vulnerable to command injection."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-78"
+
+  # ── Prototype Pollution ──────────────────────────────────────────────────────
+
+  - id: no-prototype-pollution
+    patterns:
+      - pattern: $OBJ["__proto__"] = ...
+      - pattern: $OBJ[constructor][prototype] = ...
+    message: "Direct prototype assignment can lead to prototype pollution."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-1321"
+
+  # ── SQL / NoSQL Injection ────────────────────────────────────────────────────
+
+  - id: no-string-concat-in-sql
+    patterns:
+      - pattern: |
+          $DB.query("..." + $VAR, ...)
+      - pattern: |
+          $DB.query(`...${$VAR}...`, ...)
+    message: "String interpolation in SQL queries is an injection risk. Use parameterized queries."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  # ── Hardcoded Secrets ────────────────────────────────────────────────────────
+
+  - id: no-hardcoded-jwt-secret
+    patterns:
+      - pattern: jwt.sign($PAYLOAD, "...", ...)
+      - pattern: jwt.verify($TOKEN, "...", ...)
+    message: "Hardcoded JWT secret detected. Load secrets from environment variables."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: no-hardcoded-password-in-object
+    patterns:
+      - pattern: |
+          {password: "..."}
+      - pattern: |
+          {secret: "..."}
+      - pattern: |
+          {apiKey: "..."}
+    message: "Potential hardcoded credential. Use environment variables or a secrets manager."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ── Dangerous React Patterns ─────────────────────────────────────────────────
+
+  - id: no-dangerously-set-inner-html
+    pattern: dangerouslySetInnerHTML={{__html: $X}}
+    message: "dangerouslySetInnerHTML bypasses React's XSS protection. Sanitize $X with DOMPurify first."
+    languages: [javascript, typescript, tsx, jsx]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  - id: no-href-javascript
+    patterns:
+      - pattern: <a href={"javascript:..."} ... />
+      - pattern: <a href="javascript:..." ... />
+    message: "javascript: URI in href enables XSS."
+    languages: [javascript, typescript, tsx, jsx]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  # ── Express / HTTP ───────────────────────────────────────────────────────────
+
+  - id: no-res-send-user-input
+    patterns:
+      - pattern: res.send($REQ.body)
+      - pattern: res.send($REQ.query.$X)
+      - pattern: res.send($REQ.params.$X)
+    message: "Sending raw user input in the response can lead to reflected XSS. Sanitize before sending."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  - id: no-cors-any-origin
+    pattern: |
+      app.use(cors({origin: "*"}))
+    message: "Wildcard CORS origin allows any domain to make credentialed requests. Restrict to known origins."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-942"
+
+  # ── Cryptography ─────────────────────────────────────────────────────────────
+
+  - id: no-md5-for-passwords
+    patterns:
+      - pattern: crypto.createHash("md5")
+      - pattern: crypto.createHash('md5')
+    message: "MD5 is cryptographically broken. Use bcrypt, argon2, or scrypt for passwords; SHA-256+ for digests."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  - id: no-sha1-for-passwords
+    patterns:
+      - pattern: crypto.createHash("sha1")
+      - pattern: crypto.createHash('sha1')
+    message: "SHA-1 is deprecated for security use. Prefer SHA-256 or higher."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  - id: no-math-random-for-secrets
+    pattern: Math.random()
+    message: "Math.random() is not cryptographically secure. Use crypto.randomBytes() or crypto.randomUUID()."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-338"
+
+  # ── Path Traversal ───────────────────────────────────────────────────────────
+
+  - id: no-path-join-user-input
+    patterns:
+      - pattern: path.join($ROOT, $REQ.body.$X)
+      - pattern: path.join($ROOT, $REQ.params.$X)
+      - pattern: path.join($ROOT, $REQ.query.$X)
+    message: "Path construction with user input can lead to directory traversal. Validate and normalize the path."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-22"

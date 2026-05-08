@@ -1,0 +1,94 @@
+name: ZAP DAST Baseline Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      target-url:
+        description: "URL of the application to scan"
+        required: true
+        type: string
+      scan-type:
+        description: "Scan type: baseline (passive) or full (active)"
+        required: false
+        type: choice
+        options:
+          - baseline
+          - full
+        default: baseline
+      fail-on-warnings:
+        description: "Fail the workflow if ZAP reports WARN-level alerts"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      target-url:
+        description: "URL of the application to scan"
+        required: true
+        type: string
+      scan-type:
+        description: "Scan type: baseline | full"
+        required: false
+        type: string
+        default: "baseline"
+      fail-on-warnings:
+        description: "Fail if WARN-level alerts are found"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write       # ZAP action opens GitHub Issues with findings
+  pull-requests: write
+
+jobs:
+  zap-scan:
+    name: OWASP ZAP — ${{ inputs.scan-type || 'baseline' }} scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare ZAP rules file
+        run: |
+          if [[ -f "templates/zap/rules.tsv" ]]; then
+            cp templates/zap/rules.tsv /tmp/zap-rules.tsv
+            echo "ZAP_RULES=-c /tmp/zap-rules.tsv" >> "$GITHUB_ENV"
+          else
+            echo "ZAP_RULES=" >> "$GITHUB_ENV"
+          fi
+
+      - name: ZAP Baseline Scan (passive)
+        if: ${{ inputs.scan-type == 'baseline' || inputs.scan-type == '' }}
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ inputs.target-url }}
+          rules_file_name: "templates/zap/rules.tsv"
+          cmd_options: "-I"
+          fail_action: ${{ inputs.fail-on-warnings && 'true' || 'false' }}
+          artifact_name: "zap-baseline-report"
+          allow_issue_writing: true
+
+      - name: ZAP Full Scan (active — use only against environments you own)
+        if: ${{ inputs.scan-type == 'full' }}
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: ${{ inputs.target-url }}
+          rules_file_name: "templates/zap/rules.tsv"
+          cmd_options: "-I"
+          fail_action: ${{ inputs.fail-on-warnings && 'true' || 'false' }}
+          artifact_name: "zap-full-scan-report"
+          allow_issue_writing: true
+
+      - name: Upload ZAP HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report-${{ inputs.scan-type || 'baseline' }}-${{ github.run_number }}
+          path: |
+            report_html.html
+            report_json.json
+            report_md.md
+          retention-days: 30
+          if-no-files-found: ignore

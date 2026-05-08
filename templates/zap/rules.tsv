@@ -1,0 +1,66 @@
+# ZAP Rules — Alert Filter Configuration
+# Format: <alertId>\t<action>\t[<parameter>]\t[<evidence>]\t[<url>]\t[<method>]\t[<attack>]
+# Actions: IGNORE (0), WARN (1), FAIL (2)
+#
+# Reference: https://www.zaproxy.org/docs/desktop/addons/alert-filter/
+# Run `docker run ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -h` for CLI options.
+#
+# Common Alert IDs:
+#   10016 = Web Browser XSS Protection Not Enabled
+#   10017 = Cross-Domain JavaScript Source File Inclusion
+#   10020 = X-Frame-Options Header Not Set
+#   10021 = X-Content-Type-Options Header Missing
+#   10023 = Information Disclosure - Debug Error Messages
+#   10024 = Information Disclosure - Sensitive Information in URL
+#   10025 = Information Disclosure - Sensitive Information in HTTP Referrer Header
+#   10027 = Information Disclosure - Suspicious Comments
+#   10035 = Strict-Transport-Security Header Not Set
+#   10036 = Server Leaks Version Information via "Server" HTTP Response Header
+#   10037 = Server Leaks Information via "X-Powered-By" HTTP Response Header(s)
+#   10038 = Content Security Policy (CSP) Header Not Set
+#   10040 = Secure Pages Include Mixed Content
+#   10041 = HTTP to HTTPS Insecure Transition in Form Post
+#   10049 = Non-Storable Content
+#   10050 = Retrieved from Cache
+#   10052 = X-ChromeLogger-Data (XCOLD) Header Information Leak
+#   10054 = Cookie Without SameSite Attribute
+#   10055 = CSP
+#   10063 = Permissions Policy Header Not Set
+#   10094 = Base64 Disclosure
+#   10096 = Timestamp Disclosure
+#   10098 = Cross-Domain Misconfiguration
+#   10104 = User Agent Fuzzer
+#   10105 = Weak Authentication Method
+#   10110 = Dangerous JS Functions
+#   40014 = Cross Site Scripting (Persistent) - Prime
+#   40016 = Cross Site Scripting (Persistent) - Spider
+#   40017 = Cross Site Scripting (Persistent) - Callback
+#   90004 = Insufficient Site Isolation Against Spectre Vulnerability
+#
+# ── Ignore low-signal informationals ─────────────────────────────────────────
+10027	IGNORE
+10049	IGNORE
+10050	IGNORE
+10096	IGNORE
+10094	IGNORE
+10104	IGNORE
+#
+# ── Downgrade to WARN (info headers, best-practice but not blocking) ─────────
+10036	WARN
+10037	WARN
+10017	WARN
+10063	WARN
+90004	WARN
+#
+# ── Fail on critical security issues ─────────────────────────────────────────
+10016	FAIL
+10020	FAIL
+10021	FAIL
+10035	FAIL
+10038	FAIL
+10054	FAIL
+10055	FAIL
+10105	FAIL
+40014	FAIL
+40016	FAIL
+40017	FAIL
