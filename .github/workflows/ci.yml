@@ -1,0 +1,70 @@
+name: CI — Self-validation
+
+# Validates the security module itself on every PR and push to main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck — bash scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install ShellCheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on all bash scripts
+        run: |
+          shellcheck \
+            scripts/scan-trivy.sh \
+            scripts/scan-zap-baseline.sh \
+            scripts/scan-full-dockerized.sh \
+            scripts/docker-bench.sh \
+            node-web/audit.sh \
+            setup.sh
+
+  actionlint:
+    name: actionlint — workflow syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download and run actionlint
+        run: |
+          bash <(curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  hadolint:
+    name: hadolint — Dockerfile linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Lint Dockerfiles
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          recursive: true
+          failure-threshold: warning
+
+  semgrep-rules-test:
+    name: Semgrep — rule unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run Semgrep rule tests
+        run: |
+          docker run --rm \
+            -v "$PWD/node-web":/src \
+            returntocorp/semgrep:1.95.0 \
+            semgrep --test /src/tests --config /src/semgrep.yml

@@ -20,6 +20,7 @@
 #   -f, --compose-file  FILE     docker-compose file to use (default: docker-compose.yml)
 #   -s, --service       NAME     Compose service name to wait for (default: app)
 #   -t, --timeout       SECS     Seconds to wait for app to be ready (default: 60)
+#   -H, --health-path   PATH     HTTP path used for readiness check (default: /)
 #   -S, --severity      LEVEL    Trivy severity filter (default: HIGH,CRITICAL)
 #   --skip-sast                  Skip npm audit + Semgrep
 #   --skip-trivy                 Skip Trivy image scan
@@ -32,21 +33,28 @@
 #   ./security/scripts/scan-full-dockerized.sh \
 #     --project-root /home/user/myapp \
 #     --url http://localhost:4000 \
+#     --health-path /api/health \
 #     --compose-file docker-compose.prod.yml \
 #     --service backend \
 #     --fail-on-findings
 
 set -euo pipefail
 
-# ── Defaults ───────────────────────────────────────────────────────────────────
+# ── Bootstrap ─────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=../versions.env
+source "$SECURITY_ROOT/versions.env"
+
 REPORTS_DIR="$SECURITY_ROOT/templates/reports"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 SESSION_DIR="$REPORTS_DIR/run_${TIMESTAMP}"
 
+# ── Defaults ───────────────────────────────────────────────────────────────────
 PROJECT_ROOT="${PWD}"
 ZAP_URL="http://localhost:3000"
+HEALTH_PATH="/"
 IMAGE_TAG=""
 COMPOSE_FILE="docker-compose.yml"
 COMPOSE_SERVICE="app"
@@ -57,7 +65,7 @@ SKIP_TRIVY=false
 SKIP_ZAP=false
 SKIP_BENCH=false
 FAIL_ON_FINDINGS=false
-COMPOSE_PID=""
+COMPOSE_STARTED=false
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 RED='\033[1;31m'; GRN='\033[1;32m'; YLW='\033[1;33m'
@@ -69,6 +77,11 @@ warn() { printf "${YLW}[WARN]${RST} %s\n" "$*"; }
 fail() { printf "${RED}[FAIL]${RST} %s\n" "$*"; }
 die()  { fail "$*"; exit 1; }
 
+require_docker() {
+  command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
+  docker info &>/dev/null 2>&1 || die "Docker daemon is not running. Start Docker and retry."
+}
+
 # ── Argument parsing ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -78,6 +91,7 @@ while [[ $# -gt 0 ]]; do
     -f|--compose-file)  COMPOSE_FILE="$2"; shift 2 ;;
     -s|--service)       COMPOSE_SERVICE="$2"; shift 2 ;;
     -t|--timeout)       READY_TIMEOUT="$2"; shift 2 ;;
+    -H|--health-path)   HEALTH_PATH="$2"; shift 2 ;;
     -S|--severity)      SEVERITY="$2"; shift 2 ;;
     --skip-sast)        SKIP_SAST=true; shift ;;
     --skip-trivy)       SKIP_TRIVY=true; shift ;;
@@ -92,18 +106,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Validation ─────────────────────────────────────────────────────────────────
-command -v docker &>/dev/null || die "Docker is required but not found in PATH."
+require_docker
 [[ -d "$PROJECT_ROOT" ]] || die "Project root does not exist: $PROJECT_ROOT"
 
 mkdir -p "$SESSION_DIR"
 
-# Scorecard: track pass/warn/fail per tool
 declare -A SCORES=([sast]="SKIP" [trivy]="SKIP" [zap]="SKIP" [bench]="SKIP")
 CRITICAL_FINDINGS=0
 
 # ── Cleanup on exit ────────────────────────────────────────────────────────────
 cleanup() {
-  if [[ -n "$COMPOSE_PID" ]] && docker compose -f "$PROJECT_ROOT/$COMPOSE_FILE" ps -q &>/dev/null; then
+  if [[ "$COMPOSE_STARTED" == true ]]; then
     log "Stopping compose services started by this scan…"
     docker compose -f "$PROJECT_ROOT/$COMPOSE_FILE" down --timeout 10 &>/dev/null || true
   fi
@@ -114,7 +127,8 @@ trap cleanup EXIT INT TERM
 wait_for_url() {
   local url="$1" timeout="$2" elapsed=0
   log "Waiting for $url to respond (timeout: ${timeout}s)…"
-  until curl -sf --max-time 3 "$url" &>/dev/null; do
+  # Accept any HTTP response (including 404) — we only need the server to be up
+  until curl -s --max-time 3 -o /dev/null -w '%{http_code}' "$url" | grep -qE '^[0-9]{3}$'; do
     sleep 2; elapsed=$((elapsed + 2))
     [[ $elapsed -ge $timeout ]] && die "Timed out waiting for $url after ${timeout}s"
     log "  …still waiting (${elapsed}s elapsed)"
@@ -134,13 +148,11 @@ log "═════════════════════════
 if [[ "$SKIP_SAST" == false ]]; then
   log "━━━ Step 1/4: SAST (npm audit + Semgrep) ━━━"
   AUDIT_SCRIPT="$SECURITY_ROOT/node-web/audit.sh"
-  if bash "$AUDIT_SCRIPT" "$PROJECT_ROOT" > "$SESSION_DIR/sast.log" 2>&1; then
-    # Count critical npm findings
+  # Pass SESSION_DIR as the output directory so reports land in this run's folder
+  if bash "$AUDIT_SCRIPT" "$PROJECT_ROOT" "$SESSION_DIR" > "$SESSION_DIR/sast.log" 2>&1; then
     NPM_CRITICAL=$(python3 -c "
-import json, os
-f='$SESSION_DIR/../npm-audit_'
-import glob
-files = glob.glob('$REPORTS_DIR/npm-audit_*.json')
+import json, glob, sys
+files = glob.glob('$SESSION_DIR/npm-audit_*.json')
 if files:
     d = json.load(open(sorted(files)[-1]))
     print(d.get('metadata',{}).get('vulnerabilities',{}).get('critical',0))
@@ -149,7 +161,7 @@ else:
 " 2>/dev/null || echo 0)
     SEMGREP_ERRORS=$(python3 -c "
 import json, glob
-files = glob.glob('$REPORTS_DIR/semgrep_*.json')
+files = glob.glob('$SESSION_DIR/semgrep_*.json')
 if files:
     d = json.load(open(sorted(files)[-1]))
     errors = [r for r in d.get('results',[]) if r.get('extra',{}).get('severity','') == 'ERROR']
@@ -178,59 +190,43 @@ if [[ "$SKIP_TRIVY" == false ]]; then
   log "━━━ Step 2/4: Docker Image Scan (Trivy) ━━━"
 
   if [[ -z "$IMAGE_TAG" ]]; then
-    IMAGE_TAG="security-scan-target:${TIMESTAMP}"
     COMPOSE_YML="$PROJECT_ROOT/$COMPOSE_FILE"
     if [[ -f "$COMPOSE_YML" ]]; then
       log "Building image via docker compose (service: $COMPOSE_SERVICE)…"
       docker compose -f "$COMPOSE_YML" build "$COMPOSE_SERVICE" \
-        2>"$SESSION_DIR/docker-build.log" \
-        && IMAGE_TAG=$(docker compose -f "$COMPOSE_YML" images -q "$COMPOSE_SERVICE" 2>/dev/null | head -1)
+        >"$SESSION_DIR/docker-build.log" 2>&1
+      IMAGE_TAG=$(docker compose -f "$COMPOSE_YML" images -q "$COMPOSE_SERVICE" 2>/dev/null | head -1)
     elif [[ -f "$PROJECT_ROOT/Dockerfile" ]]; then
+      IMAGE_TAG="security-scan-target:${TIMESTAMP}"
       log "Building image from Dockerfile…"
       docker build -t "$IMAGE_TAG" "$PROJECT_ROOT" \
         >"$SESSION_DIR/docker-build.log" 2>&1
     else
       warn "No Dockerfile or compose file found — skipping image scan."
       SCORES[trivy]="SKIP"
-      IMAGE_TAG=""
     fi
   fi
 
   if [[ -n "$IMAGE_TAG" ]]; then
-    TRIVY_REPORT="$SESSION_DIR/trivy-image.json"
+    log "Scanning image: $IMAGE_TAG"
     docker run --rm \
       -v /var/run/docker.sock:/var/run/docker.sock \
-      -v trivy-cache:/root/.cache/trivy \
-      "aquasec/trivy:0.61.0" image \
-        --exit-code 0 \
-        --severity "$SEVERITY" \
-        --format json \
-        --output /tmp/trivy-out.json \
-        "$IMAGE_TAG" 2>"$SESSION_DIR/trivy.log" || true
-
-    # Copy report out (trivy writes inside container)
-    docker run --rm \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -v trivy-cache:/root/.cache/trivy \
       -v "$SESSION_DIR":/reports \
-      "aquasec/trivy:0.61.0" image \
+      -v securitymodule-trivy-cache:/root/.cache/trivy \
+      "aquasec/trivy:${TRIVY_VERSION}" image \
         --exit-code 0 \
         --severity "$SEVERITY" \
         --format json \
         --output /reports/trivy-image.json \
-        "$IMAGE_TAG" 2>>"$SESSION_DIR/trivy.log" || true
+        "$IMAGE_TAG" 2>"$SESSION_DIR/trivy.log" || true
 
-    # Also produce human-readable table
     docker run --rm \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -v trivy-cache:/root/.cache/trivy \
       -v "$SESSION_DIR":/reports \
-      "aquasec/trivy:0.61.0" image \
-        --exit-code 0 \
-        --severity "$SEVERITY" \
+      -v securitymodule-trivy-cache:/root/.cache/trivy \
+      "aquasec/trivy:${TRIVY_VERSION}" convert \
         --format table \
         --output /reports/trivy-image.txt \
-        "$IMAGE_TAG" 2>>"$SESSION_DIR/trivy.log" || true
+        /reports/trivy-image.json 2>>"$SESSION_DIR/trivy.log" || true
 
     if [[ -f "$SESSION_DIR/trivy-image.json" ]]; then
       TRIVY_VULNS=$(python3 -c "
@@ -260,17 +256,16 @@ fi
 if [[ "$SKIP_ZAP" == false ]]; then
   log "━━━ Step 3/4: DAST — ZAP Baseline Scan ━━━"
   COMPOSE_YML="$PROJECT_ROOT/$COMPOSE_FILE"
-  COMPOSE_STARTED=false
+  READINESS_URL="${ZAP_URL%/}${HEALTH_PATH}"
 
   if [[ -f "$COMPOSE_YML" ]]; then
     log "Starting project with docker compose…"
     docker compose -f "$COMPOSE_YML" up -d 2>"$SESSION_DIR/compose-up.log"
     COMPOSE_STARTED=true
-    COMPOSE_PID="started"
-    wait_for_url "$ZAP_URL" "$READY_TIMEOUT"
+    wait_for_url "$READINESS_URL" "$READY_TIMEOUT"
   else
-    warn "No compose file at $COMPOSE_YML — assuming the app is already running at $ZAP_URL"
-    wait_for_url "$ZAP_URL" 10
+    warn "No compose file at $COMPOSE_YML — assuming the app is already running."
+    wait_for_url "$READINESS_URL" 10
   fi
 
   ZAP_BASE="zap-baseline_${TIMESTAMP}"
@@ -282,37 +277,34 @@ if [[ "$SKIP_ZAP" == false ]]; then
     RULES_FLAG=(-c /zap/rules.tsv)
   fi
 
+  ZAP_EXIT=0
   docker run --rm \
     --network host \
     -v "$SESSION_DIR":/zap/wrk/:rw \
     "${RULES_MOUNT[@]+"${RULES_MOUNT[@]}"}" \
-    "ghcr.io/zaproxy/zaproxy:stable" \
+    "ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}" \
     zap-baseline.py \
       -t "$ZAP_URL" \
       -r "${ZAP_BASE}.html" \
       -J "${ZAP_BASE}.json" \
       -w "${ZAP_BASE}.md" \
       "${RULES_FLAG[@]+"${RULES_FLAG[@]}"}" \
-      -I 2>"$SESSION_DIR/zap.log" || {
-    ZAP_EXIT=$?
-    if [[ $ZAP_EXIT -eq 2 ]]; then
-      warn "ZAP found FAIL-level alerts (exit 2)"
-      SCORES[zap]="WARN"
-      CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + 1))
-    elif [[ $ZAP_EXIT -ne 0 ]]; then
-      warn "ZAP unexpected exit $ZAP_EXIT — check $SESSION_DIR/zap.log"
-      SCORES[zap]="WARN"
-    fi
-  }
+      -I 2>"$SESSION_DIR/zap.log" || ZAP_EXIT=$?
 
-  if [[ "${SCORES[zap]}" == "SKIP" ]]; then
-    # No errors set above → check JSON for alerts
+  if [[ $ZAP_EXIT -eq 2 ]]; then
+    warn "ZAP found FAIL-level alerts (exit 2). See ${ZAP_BASE}.html"
+    SCORES[zap]="WARN"
+    CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + 1))
+  elif [[ $ZAP_EXIT -ne 0 ]]; then
+    warn "ZAP unexpected exit $ZAP_EXIT — check $SESSION_DIR/zap.log"
+    SCORES[zap]="WARN"
+  else
     ZAP_JSON="$SESSION_DIR/${ZAP_BASE}.json"
     if [[ -f "$ZAP_JSON" ]]; then
       ZAP_ALERTS=$(python3 -c "
 import json
 d = json.load(open('$ZAP_JSON'))
-high = [a for a in d.get('site',[{}])[0].get('alerts',[]) if int(a.get('riskcode',0)) >= 2]
+high = [a for s in d.get('site',[]) for a in s.get('alerts',[]) if int(a.get('riskcode',0)) >= 2]
 print(len(high))
 " 2>/dev/null || echo 0)
       if [[ "$ZAP_ALERTS" -gt 0 ]]; then
@@ -332,7 +324,7 @@ print(len(high))
   if [[ "$COMPOSE_STARTED" == true ]]; then
     log "Stopping compose services…"
     docker compose -f "$COMPOSE_YML" down --timeout 10 2>/dev/null || true
-    COMPOSE_PID=""
+    COMPOSE_STARTED=false
   fi
 else
   log "Skipping ZAP (--skip-zap)"
@@ -351,7 +343,7 @@ if [[ "$SKIP_BENCH" == false ]]; then
     -v /var/lib:/var/lib:ro \
     -v /var/run/docker.sock:/var/run/docker.sock:ro \
     --label docker_bench_security \
-    "docker/docker-bench-security:latest" \
+    "docker/docker-bench-security:${BENCH_VERSION}" \
     > "$SESSION_DIR/docker-bench.log" 2>&1 || true
 
   BENCH_WARNS=$(grep -c '\[WARN\]' "$SESSION_DIR/docker-bench.log" || true)
@@ -378,21 +370,18 @@ SUMMARY_FILE="$SESSION_DIR/summary.txt"
   printf " %-18s  %s\n" "Tool" "Result"
   echo "──────────────────────────────────────────────────────"
   for tool in sast trivy zap bench; do
-    SCORE="${SCORES[$tool]}"
-    printf " %-18s  %s\n" "$tool" "$SCORE"
+    printf " %-18s  %s\n" "$tool" "${SCORES[$tool]}"
   done
   echo "──────────────────────────────────────────────────────"
   echo " Total critical findings: $CRITICAL_FINDINGS"
   echo "══════════════════════════════════════════════════════"
 } | tee "$SUMMARY_FILE"
 
-# Print report file list
 log "Reports written to $SESSION_DIR:"
 find "$SESSION_DIR" -type f | sort | while read -r f; do
   printf "   %s\n" "${f#"$SESSION_DIR/"}"
 done
 
-# ── Exit code ─────────────────────────────────────────────────────────────────
 if [[ "$FAIL_ON_FINDINGS" == true && "$CRITICAL_FINDINGS" -gt 0 ]]; then
   fail "Failing build: $CRITICAL_FINDINGS critical finding(s). See summary above."
   exit 1

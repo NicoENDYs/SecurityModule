@@ -7,25 +7,21 @@
 #   docker compose -f docker/docker-compose.yml down -v        # stop & clean
 #
 # Override the target URL:
-#   TARGET_URL=https://staging.example.com docker compose ... up
-
-version: "3.9"
+#   TARGET_URL=http://target:80 docker compose ... up
 
 networks:
   security-lab:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.28.0.0/24
+    # No hardcoded subnet — Docker assigns automatically to avoid conflicts
 
 volumes:
   zap-reports:
-  trivy-cache:
+  securitymodule-trivy-cache:
 
 services:
   # ── OWASP ZAP — DAST scanner ─────────────────────────────────────────────────
   zap:
-    image: ghcr.io/zaproxy/zaproxy:stable
+    image: ghcr.io/zaproxy/zaproxy:2.16.0
     container_name: security-lab-zap
     networks:
       - security-lab
@@ -36,7 +32,7 @@ services:
       - ZAP_PORT=8090
     command: >
       zap-baseline.py
-        -t ${TARGET_URL:-http://target:3000}
+        -t ${TARGET_URL:-http://target:80}
         -r zap-baseline-report.html
         -J zap-baseline-report.json
         -c /zap/rules.tsv
@@ -53,7 +49,7 @@ services:
     networks:
       - security-lab
     volumes:
-      - trivy-cache:/root/.cache/trivy
+      - securitymodule-trivy-cache:/root/.cache/trivy
       - ../:/project:ro
       - ../templates/reports:/reports:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -68,7 +64,7 @@ services:
 
   # ── Semgrep — SAST for JS/TS ─────────────────────────────────────────────────
   semgrep:
-    image: returntocorp/semgrep:latest
+    image: returntocorp/semgrep:1.95.0
     container_name: security-lab-semgrep
     networks:
       - security-lab
@@ -87,6 +83,7 @@ services:
       - sast
 
   # ── Dummy target (replace with your actual app for integration tests) ────────
+  # nginx listens on port 80 internally; host port 3000 maps to it.
   target:
     image: nginx:alpine
     container_name: security-lab-target

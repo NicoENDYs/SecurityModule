@@ -129,7 +129,7 @@ on:
 
 jobs:
   trivy:
-    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@v1
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
@@ -144,7 +144,7 @@ jobs:
 ```yaml
 jobs:
   zap:
-    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@v1
     with:
       target-url: "https://staging.example.com"
       scan-type: "baseline"
@@ -205,6 +205,22 @@ docker run --rm -v "$(pwd)":/src -v "$(pwd)/security/node-web/semgrep.yml":/semg
 
 ---
 
+## Versioning
+
+| Ref | Recommended use |
+|-----|-----------------|
+| `@v1` | Latest stable 1.x release — **recommended** |
+| `@v1.1.0` | Pinned to a specific release (compliance environments) |
+| `@main` | Bleeding edge — **not recommended** for production |
+
+When using as a submodule, pin to a tag:
+```bash
+cd security && git checkout v1.1.0 && cd ..
+git add security && git commit -m "chore(security): pin to v1.1.0"
+```
+
+---
+
 ## Contributing
 
 1. Fork this repository.
@@ -216,4 +232,4 @@ docker run --rm -v "$(pwd)":/src -v "$(pwd)/security/node-web/semgrep.yml":/semg
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
