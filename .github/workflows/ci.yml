@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   shellcheck:
     name: ShellCheck — bash scripts
@@ -54,4 +57,4 @@ jobs:
           docker run --rm \
             -v "$PWD/node-web":/src \
             returntocorp/semgrep:1.95.0 \
-            semgrep --test /src/tests --config /src/semgrep.yml
+            semgrep --test /src/tests
