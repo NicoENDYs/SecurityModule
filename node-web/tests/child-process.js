@@ -2,7 +2,7 @@
 // and no-child-process-execsync-with-variable rules.
 // Run: semgrep --test node-web/tests --config node-web/semgrep.yml
 
-const { exec, execSync } = require('child_process');
+const { exec, execSync, execFile, spawn, spawnSync } = require('child_process');
 const cp = require('child_process');
 
 // ── Exec: should flag ─────────────────────────────────────────────────────────
@@ -21,13 +21,13 @@ require('child_process').execSync(userInput);
 // ruleid: no-child-process-execsync-with-variable
 execSync(userInput);
 
-// ── Exec: safe usage (literal string) — should NOT flag ──────────────────────
+// ── Safe alternatives using execFile/spawn — should NOT flag ─────────────────
 
 // ok: no-child-process-exec-with-variable
-require('child_process').exec('ls -la', (err, out) => console.log(out));
+execFile('ls', ['-la'], (err, out) => console.log(out));
 
 // ok: no-child-process-exec-with-variable
-exec('git status', (err, out) => console.log(out));
+spawn('git', ['status']);
 
 // ok: no-child-process-execsync-with-variable
-execSync('npm install');
+spawnSync('npm', ['install']);

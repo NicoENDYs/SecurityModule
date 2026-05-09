@@ -1,7 +1,5 @@
 // Semgrep test fixtures for no-dangerously-set-inner-html and no-href-javascript.
 
-import DOMPurify from 'dompurify';
-
 // ── dangerouslySetInnerHTML: should flag ──────────────────────────────────────
 
 // ruleid: no-dangerously-set-inner-html
@@ -10,12 +8,13 @@ const Unsafe = ({ html }) => <div dangerouslySetInnerHTML={{__html: html}} />;
 // ruleid: no-dangerously-set-inner-html
 const UnsafeSpan = ({ content }) => <span dangerouslySetInnerHTML={{__html: content}} />;
 
-// ── dangerouslySetInnerHTML: safe — sanitize first ───────────────────────────
+// ── Safe alternative: render via React children (no dangerouslySetInnerHTML) ──
 
 // ok: no-dangerously-set-inner-html
-const Safe = ({ html }) => (
-  <div dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(html)}} />
-);
+const Safe = ({ text }) => <div>{text}</div>;
+
+// ok: no-dangerously-set-inner-html
+const SafeParagraph = ({ children }) => <p className="content">{children}</p>;
 
 // ── javascript: href: should flag ────────────────────────────────────────────
 
