@@ -69,7 +69,7 @@ jobs:
 
       - name: ZAP Baseline Scan (passive)
         if: ${{ inputs.scan-type == 'baseline' || inputs.scan-type == '' }}
-        uses: zaproxy/action-baseline@v0.14.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: ${{ inputs.target-url }}
           rules_file_name: ${{ inputs.rules-file || '.security-module/templates/zap/rules.tsv' }}
