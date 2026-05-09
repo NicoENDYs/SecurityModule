@@ -36,6 +36,16 @@ on:
         required: false
         type: boolean
         default: false
+      module-ref:
+        description: "Git ref of NicoENDYs/SecurityModule to source rules.tsv from"
+        required: false
+        type: string
+        default: "v1"
+      rules-file:
+        description: "Path to ZAP rules.tsv (relative to workspace root)"
+        required: false
+        type: string
+        default: ".security-module/templates/zap/rules.tsv"
 
 permissions:
   contents: read
@@ -47,24 +57,22 @@ jobs:
     name: OWASP ZAP — ${{ inputs.scan-type || 'baseline' }} scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout consumer repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Prepare ZAP rules file
-        run: |
-          if [[ -f "templates/zap/rules.tsv" ]]; then
-            cp templates/zap/rules.tsv /tmp/zap-rules.tsv
-            echo "ZAP_RULES=-c /tmp/zap-rules.tsv" >> "$GITHUB_ENV"
-          else
-            echo "ZAP_RULES=" >> "$GITHUB_ENV"
-          fi
+      - name: Checkout SecurityModule (rules.tsv lives here)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: NicoENDYs/SecurityModule
+          ref: ${{ inputs.module-ref || 'v1' }}
+          path: .security-module
 
       - name: ZAP Baseline Scan (passive)
         if: ${{ inputs.scan-type == 'baseline' || inputs.scan-type == '' }}
         uses: zaproxy/action-baseline@v0.14.0
         with:
           target: ${{ inputs.target-url }}
-          rules_file_name: "templates/zap/rules.tsv"
+          rules_file_name: ${{ inputs.rules-file || '.security-module/templates/zap/rules.tsv' }}
           cmd_options: "-I"
           fail_action: ${{ inputs.fail-on-warnings && 'true' || 'false' }}
           artifact_name: "zap-baseline-report"
@@ -75,14 +83,14 @@ jobs:
         uses: zaproxy/action-full-scan@v0.12.0
         with:
           target: ${{ inputs.target-url }}
-          rules_file_name: "templates/zap/rules.tsv"
+          rules_file_name: ${{ inputs.rules-file || '.security-module/templates/zap/rules.tsv' }}
           cmd_options: "-I"
           fail_action: ${{ inputs.fail-on-warnings && 'true' || 'false' }}
           artifact_name: "zap-full-scan-report"
           allow_issue_writing: true
 
       - name: Upload ZAP HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: always()
         with:
           name: zap-report-${{ inputs.scan-type || 'baseline' }}-${{ github.run_number }}

@@ -223,7 +223,7 @@ jobs:
   # ── SAST + Imagen ──────────────────────────────────────────────────────────
   trivy:
     name: Trivy (source + image)
-    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@v1
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
@@ -262,7 +262,7 @@ jobs:
   # ── DAST contra staging ───────────────────────────────────────────────────
   zap-dast:
     name: ZAP DAST (staging)
-    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@v1
     with:
       target-url: ${{ vars.STAGING_URL }}   # ← define STAGING_URL en Settings > Variables
       scan-type: baseline

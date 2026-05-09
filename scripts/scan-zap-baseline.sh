@@ -1,50 +1,89 @@
 #!/usr/bin/env bash
-# scan-zap-baseline.sh — Run OWASP ZAP baseline scan locally via Docker.
+# scan-zap-baseline.sh — Run OWASP ZAP scan locally via Docker.
 # No ZAP installation required on the host.
 #
 # Usage:
-#   ./scripts/scan-zap-baseline.sh <target-url> [ajax]
+#   ./scripts/scan-zap-baseline.sh <target-url> [mode]
+#
+# Modes:
+#   baseline  (default) Passive scan — safe against any URL
+#   ajax               Passive scan + ajax spider for SPAs (still passive)
+#   full               ACTIVE scan — sends attack payloads. Only run against
+#                      targets you own. Requires: I_OWN_THIS_TARGET=yes
 #
 # Examples:
 #   ./scripts/scan-zap-baseline.sh https://staging.example.com
-#   ./scripts/scan-zap-baseline.sh https://staging.example.com ajax   # uses ajaxSpider
+#   ./scripts/scan-zap-baseline.sh https://staging.example.com ajax
+#   I_OWN_THIS_TARGET=yes ./scripts/scan-zap-baseline.sh https://staging.example.com full
 set -euo pipefail
 
-ZAP_IMAGE="ghcr.io/zaproxy/zaproxy:stable"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPORTS_DIR="$REPO_ROOT/templates/reports"
-ZAP_RULES="$REPO_ROOT/templates/zap/rules.tsv"
+SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=../versions.env
+source "$SECURITY_ROOT/versions.env"
+
+ZAP_IMAGE="ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}"
+REPORTS_DIR="$SECURITY_ROOT/templates/reports"
+ZAP_RULES="$SECURITY_ROOT/templates/zap/rules.tsv"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
-log()  { printf '\033[1;35m[zap]\033[0m %s\n' "$*"; }
-err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
-die()  { err "$*"; exit 1; }
+log() { printf '\033[1;35m[zap]\033[0m %s\n' "$*"; }
+err() { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
+die() { err "$*"; exit 1; }
 
-command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
+require_docker() {
+  command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
+  docker info &>/dev/null 2>&1 || die "Docker daemon is not running. Start Docker and retry."
+}
 
-[[ -z "${1:-}" ]] && die "Usage: $0 <target-url> [ajax]"
+require_docker
+
+[[ -z "${1:-}" ]] && die "Usage: $0 <target-url> [baseline|ajax|full]"
 
 TARGET_URL="$1"
 SPIDER_MODE="${2:-baseline}"
-SAFE_NAME="$(echo "$TARGET_URL" | sed 's|[^a-zA-Z0-9]|_|g')"
+SAFE_NAME=$(printf '%s' "$TARGET_URL" | tr -c '[:alnum:]_.-' '_')
 REPORT_BASE="zap-${SPIDER_MODE}_${SAFE_NAME}_${TIMESTAMP}"
 
 mkdir -p "$REPORTS_DIR"
 
 log "Target URL : $TARGET_URL"
-log "Spider mode: $SPIDER_MODE"
+log "Scan mode  : $SPIDER_MODE"
 log "Reports dir: $REPORTS_DIR"
 
-ZAP_CMD="zap-baseline.py"
-[[ "$SPIDER_MODE" == "ajax" ]] && ZAP_CMD="zap-full-scan.py"
+# Resolve ZAP command and arguments based on mode
+case "$SPIDER_MODE" in
+  baseline)
+    ZAP_CMD="zap-baseline.py"
+    ZAP_EXTRA_ARGS=()
+    ;;
+  ajax)
+    # Passive scan with ajax spider — safe for SPAs, still does NOT send attack payloads
+    ZAP_CMD="zap-baseline.py"
+    ZAP_EXTRA_ARGS=(-j)
+    ;;
+  full)
+    # Active scan: sends attack payloads. Requires explicit consent.
+    if [[ "${I_OWN_THIS_TARGET:-}" != "yes" ]]; then
+      die "Active scan requires explicit consent. Re-run with:
+  I_OWN_THIS_TARGET=yes $0 $TARGET_URL full
+WARNING: Only scan targets you own or have written permission to test."
+    fi
+    log "WARNING: Active scan enabled against $TARGET_URL"
+    ZAP_CMD="zap-full-scan.py"
+    ZAP_EXTRA_ARGS=()
+    ;;
+  *)
+    die "Unknown mode '$SPIDER_MODE'. Use: baseline | ajax | full"
+    ;;
+esac
 
 RULES_MOUNT=()
+RULES_FLAG=()
 if [[ -f "$ZAP_RULES" ]]; then
   RULES_MOUNT=(-v "$ZAP_RULES":/zap/rules.tsv:ro)
   RULES_FLAG=(-c /zap/rules.tsv)
-else
-  RULES_FLAG=()
 fi
 
 log "Pulling ZAP image (if not cached)…"
@@ -59,10 +98,11 @@ docker run --rm \
     -r "${REPORT_BASE}.html" \
     -J "${REPORT_BASE}.json" \
     -w "${REPORT_BASE}.md" \
+    "${ZAP_EXTRA_ARGS[@]+"${ZAP_EXTRA_ARGS[@]}"}" \
     "${RULES_FLAG[@]+"${RULES_FLAG[@]}"}" \
     -I || {
   EXIT=$?
-  # ZAP exits non-zero when alerts are found; that is expected and not a tool failure.
+  # ZAP exits non-zero when alerts are found; that is expected.
   if [[ $EXIT -eq 2 ]]; then
     log "WARN: ZAP found FAIL-level alerts (exit 2). Review the report."
   elif [[ $EXIT -ne 0 ]]; then

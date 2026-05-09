@@ -141,7 +141,7 @@ jobs:
   # ── Trivy: escaneo de dependencias, filesystem e IaC ──────────────────────
   trivy:
     name: Trivy Vulnerability Scan
-    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@v1
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
@@ -153,7 +153,7 @@ jobs:
   # ── ZAP: DAST contra staging (se activa manualmente o en schedule) ────────
   zap-dast:
     name: ZAP DAST Baseline
-    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@v1
     with:
       target-url: "https://staging.tu-app.com"
       scan-type: "baseline"
@@ -174,7 +174,7 @@ Si tu proyecto construye una imagen Docker, añade esta variante de Trivy al wor
   trivy-image:
     name: Trivy Image Scan
     needs: build          # asume que tienes un job 'build' que hace docker build
-    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/trivy.yml@v1
     with:
       image-ref: "ghcr.io/tu-org/tu-imagen:${{ github.sha }}"
       severity: "HIGH,CRITICAL"
@@ -190,7 +190,7 @@ Si tu proyecto construye una imagen Docker, añade esta variante de Trivy al wor
 ```yaml
   zap-full:
     name: ZAP Full Scan (active)
-    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@main
+    uses: nicoendys/securitymodule/.github/workflows/zap-baseline.yml@v1
     with:
       target-url: "https://staging.tu-app.com"
       scan-type: "full"

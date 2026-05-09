@@ -10,10 +10,14 @@
 #   ./scripts/docker-bench.sh myapp            # focus on containers matching 'myapp'
 set -euo pipefail
 
-BENCH_IMAGE="docker/docker-bench-security:latest"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPORTS_DIR="$REPO_ROOT/templates/reports"
+SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=../versions.env
+source "$SECURITY_ROOT/versions.env"
+
+BENCH_IMAGE="docker/docker-bench-security:${BENCH_VERSION}"
+REPORTS_DIR="$SECURITY_ROOT/templates/reports"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 REPORT_FILE="$REPORTS_DIR/docker-bench_${TIMESTAMP}.log"
 
@@ -21,8 +25,12 @@ log()  { printf '\033[1;33m[bench]\033[0m %s\n' "$*"; }
 err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
-command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
+require_docker() {
+  command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
+  docker info &>/dev/null 2>&1 || die "Docker daemon is not running. Start Docker and retry."
+}
 
+require_docker
 mkdir -p "$REPORTS_DIR"
 
 CONTAINER_FILTER="${1:-}"
