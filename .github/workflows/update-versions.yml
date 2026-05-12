@@ -1,0 +1,80 @@
+name: Check tool versions
+
+# Weekly check for newer versions of pinned Docker images.
+# Opens a PR automatically if any version in versions.env is outdated.
+on:
+  schedule:
+    - cron: "0 8 * * 1"   # Every Monday at 08:00 UTC
+  workflow_dispatch:        # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-versions:
+    name: Check for newer tool versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check latest versions and update versions.env
+        id: check
+        run: |
+          set -euo pipefail
+
+          source versions.env
+
+          changed=false
+          updates=""
+
+          check_github_release() {
+            local repo="$1" current="$2" varname="$3"
+            latest=$(curl -sf "https://api.github.com/repos/${repo}/releases/latest" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              | jq -r '.tag_name' | sed 's/^v//')
+            if [[ -n "$latest" && "$latest" != "$current" ]]; then
+              sed -i "s/^${varname}=.*/${varname}=${latest}/" versions.env
+              updates+="  - ${varname}: ${current} → ${latest}"$'\n'
+              changed=true
+              echo "Updated ${varname}: ${current} → ${latest}"
+            else
+              echo "${varname} is up to date (${current})"
+            fi
+          }
+
+          check_github_release "aquasecurity/trivy"              "$TRIVY_VERSION"  "TRIVY_VERSION"
+          check_github_release "semgrep/semgrep"                 "$SEMGREP_VERSION" "SEMGREP_VERSION"
+          check_github_release "zaproxy/zaproxy"                 "$ZAP_VERSION"    "ZAP_VERSION"
+          check_github_release "docker/docker-bench-security"    "$BENCH_VERSION"  "BENCH_VERSION"
+
+          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+          {
+            echo "updates<<EOF"
+            echo "$updates"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create Pull Request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/bump-tool-versions
+          commit-message: "chore(versions): bump pinned tool versions"
+          title: "chore(versions): bump pinned tool versions"
+          body: |
+            Automated version bump from the weekly check workflow.
+
+            ## Updated versions
+
+            ${{ steps.check.outputs.updates }}
+
+            Please review the changelogs for each tool before merging:
+            - [Trivy releases](https://github.com/aquasecurity/trivy/releases)
+            - [Semgrep releases](https://github.com/semgrep/semgrep/releases)
+            - [ZAP releases](https://github.com/zaproxy/zaproxy/releases)
+            - [Docker Bench releases](https://github.com/docker/docker-bench-security/releases)
+          labels: "dependencies,automated"
+          delete-branch: true

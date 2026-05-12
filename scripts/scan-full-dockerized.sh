@@ -46,6 +46,10 @@ SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
+for _v in TRIVY_VERSION ZAP_VERSION BENCH_VERSION SEMGREP_VERSION; do
+  [[ -n "${!_v:-}" ]] || die "$_v is unset — versions.env not loaded properly"
+done
+unset _v
 
 REPORTS_DIR="$SECURITY_ROOT/templates/reports"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
@@ -80,6 +84,7 @@ die()  { fail "$*"; exit 1; }
 require_docker() {
   command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
   docker info &>/dev/null 2>&1 || die "Docker daemon is not running. Start Docker and retry."
+  docker volume create securitymodule-trivy-cache &>/dev/null || true
 }
 
 # ── Argument parsing ───────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
+[[ -n "${TRIVY_VERSION:-}" ]] || die "TRIVY_VERSION is unset — versions.env not loaded properly"
 
 TRIVY_IMAGE="aquasec/trivy:${TRIVY_VERSION}"
 REPORTS_DIR="$SECURITY_ROOT/templates/reports"
@@ -25,6 +26,7 @@ die() { err "$*"; exit 1; }
 require_docker() {
   command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
   docker info &>/dev/null 2>&1 || die "Docker daemon is not running. Start Docker and retry."
+  docker volume create securitymodule-trivy-cache &>/dev/null || true
 }
 
 require_docker

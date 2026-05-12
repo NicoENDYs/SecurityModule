@@ -57,4 +57,14 @@ jobs:
           docker run --rm \
             -v "$PWD/node-web":/src \
             returntocorp/semgrep:1.95.0 \
-            semgrep --test /src/tests
+            sh -c '
+              set -e
+              mkdir -p /tmp/semgrep-tests
+              cp /src/tests/*.js /src/tests/*.jsx /tmp/semgrep-tests/ 2>/dev/null || true
+              for f in /tmp/semgrep-tests/*.js /tmp/semgrep-tests/*.jsx; do
+                [ -f "$f" ] || continue
+                stem=$(basename "${f%.*}")
+                cp /src/semgrep.yml /tmp/semgrep-tests/"${stem}.yml"
+              done
+              semgrep --test /tmp/semgrep-tests/
+            '
