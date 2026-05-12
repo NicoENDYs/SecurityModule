@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install ShellCheck
         run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download and run actionlint
         run: |
@@ -50,11 +50,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Semgrep rule tests
         run: |
           docker run --rm \
             -v "$PWD/node-web":/src \
             returntocorp/semgrep:1.95.0 \
-            semgrep --test /src/tests
+            sh -c '
+              set -e
+              mkdir -p /tmp/semgrep-tests
+              cp /src/tests/*.js /src/tests/*.jsx /tmp/semgrep-tests/ 2>/dev/null || true
+              for f in /tmp/semgrep-tests/*.js /tmp/semgrep-tests/*.jsx; do
+                [ -f "$f" ] || continue
+                stem=$(basename "${f%.*}")
+                cp /src/semgrep.yml /tmp/semgrep-tests/"${stem}.yml"
+              done
+              semgrep --test /tmp/semgrep-tests/
+            '

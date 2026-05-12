@@ -15,6 +15,7 @@ SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
+[[ -n "${SEMGREP_VERSION:-}" ]] || die "SEMGREP_VERSION is unset — versions.env not loaded properly"
 
 SEMGREP_IMAGE="returntocorp/semgrep:${SEMGREP_VERSION}"
 PROJECT_ROOT="${1:-$(pwd)}"
