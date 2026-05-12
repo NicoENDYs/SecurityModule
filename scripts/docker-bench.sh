@@ -15,6 +15,7 @@ SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
+[[ -n "${BENCH_VERSION:-}" ]] || die "BENCH_VERSION is unset — versions.env not loaded properly"
 
 BENCH_IMAGE="docker/docker-bench-security:${BENCH_VERSION}"
 REPORTS_DIR="$SECURITY_ROOT/templates/reports"

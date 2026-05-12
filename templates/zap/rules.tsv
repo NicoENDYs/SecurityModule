@@ -35,7 +35,9 @@
 #   40014 = Cross Site Scripting (Persistent) - Prime
 #   40016 = Cross Site Scripting (Persistent) - Spider
 #   40017 = Cross Site Scripting (Persistent) - Callback
+#   40046 = Server Side Request Forgery (SSRF)
 #   90004 = Insufficient Site Isolation Against Spectre Vulnerability
+#   90023 = XML External Entity Attack (XXE)
 #
 # ── Ignore low-signal informationals ─────────────────────────────────────────
 10027	IGNORE
@@ -64,3 +66,5 @@
 40014	FAIL
 40016	FAIL
 40017	FAIL
+40046	FAIL
+90023	FAIL

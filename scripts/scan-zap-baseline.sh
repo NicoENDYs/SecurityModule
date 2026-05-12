@@ -22,6 +22,7 @@ SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
+[[ -n "${ZAP_VERSION:-}" ]] || die "ZAP_VERSION is unset — versions.env not loaded properly"
 
 ZAP_IMAGE="ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}"
 REPORTS_DIR="$SECURITY_ROOT/templates/reports"
