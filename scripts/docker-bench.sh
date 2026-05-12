@@ -46,11 +46,22 @@ fi
 log "Pulling image (if not cached)…"
 docker pull "$BENCH_IMAGE" --quiet
 
+# --userns host and --pid host require Linux user namespace access that is
+# restricted on GitHub Actions and most shared CI runners. Detect and adapt.
+USERNS_ARG=(--userns host)
+PID_ARG=(--pid host)
+if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+  warn "CI environment detected — omitting --userns host and --pid host."
+  warn "Kernel-level CIS checks (sections 1.x) will be skipped by Docker Bench."
+  USERNS_ARG=()
+  PID_ARG=()
+fi
+
 log "Starting Docker Bench for Security…"
 docker run --rm \
   --net host \
-  --pid host \
-  --userns host \
+  "${PID_ARG[@]+"${PID_ARG[@]}"}" \
+  "${USERNS_ARG[@]+"${USERNS_ARG[@]}"}" \
   --cap-add audit_control \
   -e DOCKER_CONTENT_TRUST="${DOCKER_CONTENT_TRUST:-0}" \
   -v /etc:/etc:ro \

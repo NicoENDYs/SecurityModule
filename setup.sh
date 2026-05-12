@@ -20,13 +20,18 @@ DIRS=(
 )
 
 FILES=(
+  versions.env
+  CHANGELOG.md
   checklists/owasp-wstg-web.md
   checklists/api-security.md
   checklists/docker-hardening.md
   scripts/scan-trivy.sh
   scripts/scan-zap-baseline.sh
+  scripts/scan-full-dockerized.sh
+  scripts/cleanup-reports.sh
   scripts/docker-bench.sh
   templates/zap/rules.tsv
+  .github/workflows/ci.yml
   .github/workflows/trivy.yml
   .github/workflows/zap-baseline.yml
   node-web/semgrep.yml
@@ -63,6 +68,7 @@ done
 # Make all scripts executable
 chmod +x "$ROOT"/scripts/*.sh 2>/dev/null || true
 chmod +x "$ROOT"/node-web/audit.sh 2>/dev/null || true
+chmod +x "$ROOT"/setup.sh 2>/dev/null || true
 
 log "Done. Security-testing-template scaffold complete."
 log "Next steps:"

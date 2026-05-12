@@ -27,6 +27,8 @@
 #   --skip-zap                   Skip ZAP baseline scan
 #   --skip-bench                 Skip Docker Bench
 #   --fail-on-findings           Exit 1 if any HIGH/CRITICAL findings (default: warn only)
+#   --allow-status   CODE        Additional HTTP status code accepted as "ready" by wait_for_url
+#                                (default: only 2xx; use e.g. --allow-status 503 for maintenance pages)
 #   -h, --help                   Show this help
 #
 # Example:
@@ -70,6 +72,8 @@ SKIP_ZAP=false
 SKIP_BENCH=false
 FAIL_ON_FINDINGS=false
 COMPOSE_STARTED=false
+ALLOW_STATUS=""
+BUILT_IMAGE=""
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 RED='\033[1;31m'; GRN='\033[1;32m'; YLW='\033[1;33m'
@@ -103,6 +107,7 @@ while [[ $# -gt 0 ]]; do
     --skip-zap)         SKIP_ZAP=true; shift ;;
     --skip-bench)       SKIP_BENCH=true; shift ;;
     --fail-on-findings) FAIL_ON_FINDINGS=true; shift ;;
+    --allow-status)    ALLOW_STATUS="$2"; shift 2 ;;
     -h|--help)
       sed -n '/^# Usage/,/^[^#]/{ /^#/{ s/^# \{0,1\}//; p } }' "$0"
       exit 0 ;;
@@ -125,15 +130,17 @@ cleanup() {
     log "Stopping compose services started by this scan…"
     docker compose -f "$PROJECT_ROOT/$COMPOSE_FILE" down --timeout 10 &>/dev/null || true
   fi
+  [[ -n "$BUILT_IMAGE" ]] && docker rmi "$BUILT_IMAGE" &>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 # ── Helper: wait for HTTP endpoint ────────────────────────────────────────────
 wait_for_url() {
   local url="$1" timeout="$2" elapsed=0
-  log "Waiting for $url to respond (timeout: ${timeout}s)…"
-  # Accept any HTTP response (including 404) — we only need the server to be up
-  until curl -s --max-time 3 -o /dev/null -w '%{http_code}' "$url" | grep -qE '^[0-9]{3}$'; do
+  local status_pattern="^2[0-9]{2}$"
+  [[ -n "$ALLOW_STATUS" ]] && status_pattern="^(2[0-9]{2}|${ALLOW_STATUS})$"
+  log "Waiting for $url to respond with 2xx${ALLOW_STATUS:+ or $ALLOW_STATUS} (timeout: ${timeout}s)…"
+  until curl -s --max-time 3 -o /dev/null -w '%{http_code}' "$url" | grep -qE "$status_pattern"; do
     sleep 2; elapsed=$((elapsed + 2))
     [[ $elapsed -ge $timeout ]] && die "Timed out waiting for $url after ${timeout}s"
     log "  …still waiting (${elapsed}s elapsed)"
@@ -201,11 +208,13 @@ if [[ "$SKIP_TRIVY" == false ]]; then
       docker compose -f "$COMPOSE_YML" build "$COMPOSE_SERVICE" \
         >"$SESSION_DIR/docker-build.log" 2>&1
       IMAGE_TAG=$(docker compose -f "$COMPOSE_YML" images -q "$COMPOSE_SERVICE" 2>/dev/null | head -1)
+      BUILT_IMAGE="$IMAGE_TAG"
     elif [[ -f "$PROJECT_ROOT/Dockerfile" ]]; then
       IMAGE_TAG="security-scan-target:${TIMESTAMP}"
       log "Building image from Dockerfile…"
       docker build -t "$IMAGE_TAG" "$PROJECT_ROOT" \
         >"$SESSION_DIR/docker-build.log" 2>&1
+      BUILT_IMAGE="$IMAGE_TAG"
     else
       warn "No Dockerfile or compose file found — skipping image scan."
       SCORES[trivy]="SKIP"
