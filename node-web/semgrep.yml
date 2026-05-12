@@ -125,7 +125,7 @@ rules:
   # ── Hardcoded Secrets ────────────────────────────────────────────────────────
 
   - id: no-hardcoded-jwt-secret
-    patterns:
+    pattern-either:
       - pattern: jwt.sign($PAYLOAD, "...", ...)
       - pattern: jwt.verify($TOKEN, "...", ...)
     message: "Hardcoded JWT secret detected. Load secrets from environment variables."
@@ -136,7 +136,7 @@ rules:
       cwe: "CWE-798"
 
   - id: no-hardcoded-password-in-object
-    patterns:
+    pattern-either:
       - pattern: |
           {password: "..."}
       - pattern: |
@@ -164,20 +164,24 @@ rules:
   # ── Dangerous React Patterns ─────────────────────────────────────────────────
 
   - id: no-dangerously-set-inner-html
-    pattern: dangerouslySetInnerHTML={{__html: $X}}
-    message: "dangerouslySetInnerHTML bypasses React's XSS protection. Sanitize $X with DOMPurify first."
-    languages: [javascript, typescript, tsx, jsx]
+    pattern: '<$EL dangerouslySetInnerHTML={...} />'
+    message: "dangerouslySetInnerHTML bypasses React's XSS protection. Sanitize content with DOMPurify first."
+    languages: [javascript, typescript]
     severity: WARNING
     metadata:
       category: security
       cwe: "CWE-79"
 
   - id: no-href-javascript
-    patterns:
-      - pattern: <a href={"javascript:..."} ... />
-      - pattern: <a href="javascript:..." ... />
+    pattern-either:
+      - patterns:
+          - pattern: <$EL href=$STR ... />
+          - metavariable-regex:
+              metavariable: $STR
+              regex: '"javascript:'
+      - pattern: '"javascript:" + $VAR'
     message: "javascript: URI in href enables XSS."
-    languages: [javascript, typescript, tsx, jsx]
+    languages: [javascript, typescript]
     severity: ERROR
     metadata:
       category: security
