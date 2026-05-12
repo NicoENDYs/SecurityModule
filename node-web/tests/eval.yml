@@ -1,0 +1,20 @@
+rules:
+  - id: no-eval
+    patterns:
+      - pattern: eval(...)
+      - pattern-not: eval("use strict")
+    message: "Avoid eval() — it executes arbitrary code and is an injection vector."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-95"
+
+  - id: no-new-function
+    pattern: new Function(...)
+    message: "new Function() is equivalent to eval(). Avoid dynamic code execution."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-95"

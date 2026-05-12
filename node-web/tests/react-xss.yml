@@ -1,0 +1,24 @@
+rules:
+  - id: no-dangerously-set-inner-html
+    pattern: '<$EL dangerouslySetInnerHTML={...} />'
+    message: "dangerouslySetInnerHTML bypasses React's XSS protection. Sanitize content with DOMPurify first."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  - id: no-href-javascript
+    pattern-either:
+      - patterns:
+          - pattern: <$EL href=$STR ... />
+          - metavariable-regex:
+              metavariable: $STR
+              regex: '"javascript:'
+      - pattern: '"javascript:" + $VAR'
+    message: "javascript: URI in href enables XSS."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-79"

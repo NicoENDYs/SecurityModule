@@ -1,0 +1,9 @@
+rules:
+  - id: no-math-random-for-secrets
+    pattern: Math.random()
+    message: "Math.random() is not cryptographically secure. Use crypto.randomBytes() or crypto.randomUUID() for security-sensitive values."
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: security
+      cwe: "CWE-338"
