@@ -226,7 +226,8 @@ rules:
       cwe: "CWE-79"
 
   - id: no-fastify-cors-wildcard
-    pattern: fastify.register(cors, {origin: "*"})
+    pattern: |
+      fastify.register(cors, {origin: "*"})
     message: "Wildcard CORS origin in Fastify allows any domain to make credentialed requests. Restrict to known origins."
     languages: [javascript, typescript]
     severity: WARNING
