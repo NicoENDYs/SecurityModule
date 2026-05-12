@@ -73,12 +73,15 @@ else
 fi
 
 # ── Semgrep ────────────────────────────────────────────────────────────────────
+# Write directly to a file inside the container to avoid mixing progress/warning
+# lines printed to stdout with the JSON payload.
 SEMGREP_REPORT="$REPORTS_DIR/semgrep_${TIMESTAMP}.json"
 SEMGREP_CONFIG="$SCRIPT_DIR/semgrep.yml"
 log "Running Semgrep via Docker…"
 docker run --rm \
   -v "$PROJECT_ROOT":/src:ro \
   -v "$SEMGREP_CONFIG":/semgrep.yml:ro \
+  -v "$REPORTS_DIR":/reports \
   "$SEMGREP_IMAGE" \
   semgrep \
     --config /semgrep.yml \
@@ -87,8 +90,8 @@ docker run --rm \
     --config "p/typescript" \
     --config "p/react" \
     --json \
-    --output /dev/stdout \
-    /src > "$SEMGREP_REPORT" || {
+    --output /reports/"$(basename "$SEMGREP_REPORT")" \
+    /src || {
   warn "Semgrep found findings or encountered errors. See: $SEMGREP_REPORT"
 }
 

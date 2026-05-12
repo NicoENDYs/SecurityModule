@@ -1,5 +1,9 @@
 # security-testing-template
 
+![CI](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml/badge.svg)
+
+> **Docs language note:** Detailed guides in [`docs/`](docs/) are written in Spanish intentionally (the primary audience is the original team). The README and all scripts are in English for broader accessibility.
+
 A reusable security-testing scaffold designed to be added as a **Git submodule** to any Node.js or React project. It standardises:
 
 - Security checklists (OWASP WSTG, API Security Top 10, Docker Hardening)

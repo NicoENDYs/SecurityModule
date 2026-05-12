@@ -30,6 +30,7 @@ jobs:
             scripts/scan-zap-baseline.sh \
             scripts/scan-full-dockerized.sh \
             scripts/docker-bench.sh \
+            scripts/cleanup-reports.sh \
             node-web/audit.sh \
             setup.sh
 
@@ -40,10 +41,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Download and run actionlint
-        run: |
-          bash <(curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color
+      - name: Run actionlint
+        uses: rhysd/actionlint@v1.7.7
 
   semgrep-rules-test:
     name: Semgrep — rule unit tests

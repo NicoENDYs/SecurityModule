@@ -3,9 +3,14 @@
 # Scans the filesystem or a Docker image and writes reports to templates/reports/.
 #
 # Usage:
-#   ./scripts/scan-trivy.sh fs [path]            # filesystem scan (default: project root)
-#   ./scripts/scan-trivy.sh image <image:tag>    # Docker image scan
-#   ./scripts/scan-trivy.sh repo <git-url>       # remote repository scan
+#   ./scripts/scan-trivy.sh fs [path]               # filesystem scan (default: project root)
+#   ./scripts/scan-trivy.sh image <image:tag>       # Docker image scan
+#   ./scripts/scan-trivy.sh repo <git-url>          # remote repository scan
+#   ./scripts/scan-trivy.sh git-history [path]      # scan local git history for leaked secrets
+#
+# Note on git-history: Trivy's repo mode scans the full commit history when run
+# against a local directory. Requires a complete clone (not --depth=1).
+# In CI, ensure: git fetch --unshallow || true
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -122,8 +127,39 @@ case "$SCAN_MODE" in
     log "  $REPORTS_DIR/${REPORT_NAME}.json"
     ;;
 
+  git-history)
+    TARGET_PATH="${2:-$SECURITY_ROOT}"
+    [[ -d "$TARGET_PATH/.git" ]] || die "Not a git repository: $TARGET_PATH"
+    SAFE_NAME=$(printf '%s' "$TARGET_PATH" | tr -c '[:alnum:]_.-' '_')
+    REPORT_NAME="trivy-git-history_${SAFE_NAME}_${TIMESTAMP}"
+    log "Scanning git history for secrets: $TARGET_PATH"
+    log "NOTE: Requires full clone — in CI run: git fetch --unshallow || true"
+    docker run --rm \
+      -v "$TARGET_PATH":/repo:ro \
+      -v "$REPORTS_DIR":/reports \
+      -v securitymodule-trivy-cache:/root/.cache/trivy \
+      "$TRIVY_IMAGE" repo \
+        --exit-code 0 \
+        --scanners secret \
+        --format json \
+        --output /reports/"${REPORT_NAME}.json" \
+        /repo
+
+    docker run --rm \
+      -v "$REPORTS_DIR":/reports \
+      -v securitymodule-trivy-cache:/root/.cache/trivy \
+      "$TRIVY_IMAGE" convert \
+        --format table \
+        --output /reports/"${REPORT_NAME}.txt" \
+        /reports/"${REPORT_NAME}.json"
+
+    log "Reports saved:"
+    log "  $REPORTS_DIR/${REPORT_NAME}.txt"
+    log "  $REPORTS_DIR/${REPORT_NAME}.json"
+    ;;
+
   *)
-    die "Unknown scan mode '$SCAN_MODE'. Use: fs | image | repo"
+    die "Unknown scan mode '$SCAN_MODE'. Use: fs | image | repo | git-history"
     ;;
 esac
 

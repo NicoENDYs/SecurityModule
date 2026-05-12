@@ -211,6 +211,38 @@ rules:
       category: security
       cwe: "CWE-942"
 
+  # ── Fastify ──────────────────────────────────────────────────────────────────
+
+  - id: no-fastify-reply-send-user-input
+    pattern-either:
+      - pattern: reply.send(request.body)
+      - pattern: reply.send(request.query.$X)
+      - pattern: reply.send(request.params.$X)
+    message: "Sending raw Fastify request data in reply can lead to reflected XSS. Sanitize before sending."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  - id: no-fastify-cors-wildcard
+    pattern: fastify.register(cors, {origin: "*"})
+    message: "Wildcard CORS origin in Fastify allows any domain to make credentialed requests. Restrict to known origins."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-942"
+
+  - id: no-fastify-raw-request
+    pattern: request.raw.$PROP
+    message: "Accessing request.raw bypasses Fastify's parsing and validation layer. Use the typed request object instead."
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
   # ── Cryptography ─────────────────────────────────────────────────────────────
 
   - id: no-md5-for-passwords
@@ -257,3 +289,39 @@ rules:
     metadata:
       category: security
       cwe: "CWE-22"
+
+  - id: no-fs-readfile-user-input
+    pattern-either:
+      - pattern: fs.readFile($REQ.query.$X, ...)
+      - pattern: fs.readFile($REQ.params.$X, ...)
+      - pattern: fs.readFile($REQ.body.$X, ...)
+      - pattern: fs.readFileSync($REQ.query.$X, ...)
+      - pattern: fs.readFileSync($REQ.params.$X, ...)
+      - pattern: fs.readFileSync($REQ.body.$X, ...)
+      - pattern: fs.createReadStream($REQ.query.$X)
+      - pattern: fs.createReadStream($REQ.params.$X)
+      - pattern: fs.createReadStream($REQ.body.$X)
+      - pattern: fs.writeFile($REQ.query.$X, ...)
+      - pattern: fs.writeFile($REQ.params.$X, ...)
+      - pattern: fs.writeFile($REQ.body.$X, ...)
+    message: "Direct filesystem access with user-controlled path enables path traversal. Validate and allowlist paths before use."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  # ── Prisma ORM ───────────────────────────────────────────────────────────────
+
+  - id: no-prisma-queryraw-interpolation
+    patterns:
+      - pattern: |
+          $PRISMA.$queryRaw`$QUERY${$VAR}$REST`
+      - pattern-not: |
+          $PRISMA.$queryRaw`$QUERY${Prisma.sql($ARGS)}$REST`
+    message: "Direct interpolation in Prisma.$queryRaw is a SQL injection risk. Use Prisma.sql tagged template or $queryRawUnsafe only with validated input."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-89"

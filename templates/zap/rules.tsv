@@ -38,6 +38,9 @@
 #   40046 = Server Side Request Forgery (SSRF)
 #   90004 = Insufficient Site Isolation Against Spectre Vulnerability
 #   90023 = XML External Entity Attack (XXE)
+#   10202 = Absence of Anti-CSRF Tokens
+#   10205 = Strict-Transport-Security Header (non-compliant / missing on subdomains)
+#   10032 = Viewstate without MAC
 #
 # ── Ignore low-signal informationals ─────────────────────────────────────────
 10027	IGNORE
@@ -53,6 +56,9 @@
 10017	WARN
 10063	WARN
 90004	WARN
+10202	WARN
+10205	WARN
+10032	WARN
 #
 # ── Fail on critical security issues ─────────────────────────────────────────
 10016	FAIL
