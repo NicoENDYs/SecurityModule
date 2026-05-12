@@ -130,7 +130,7 @@ cleanup() {
     log "Stopping compose services started by this scan…"
     docker compose -f "$PROJECT_ROOT/$COMPOSE_FILE" down --timeout 10 &>/dev/null || true
   fi
-  [[ -n "$BUILT_IMAGE" ]] && docker rmi "$BUILT_IMAGE" &>/dev/null || true
+  if [[ -n "$BUILT_IMAGE" ]]; then docker rmi "$BUILT_IMAGE" &>/dev/null || true; fi
 }
 trap cleanup EXIT INT TERM
 
