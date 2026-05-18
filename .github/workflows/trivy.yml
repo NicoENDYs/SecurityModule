@@ -60,7 +60,7 @@ jobs:
           echo "critical=$COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Upload Trivy FS scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         if: always()
         with:
           sarif_file: "trivy-fs-results.sarif"
@@ -96,7 +96,7 @@ jobs:
           output: "trivy-image-results.sarif"
 
       - name: Upload Trivy image scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         if: always()
         with:
           sarif_file: "trivy-image-results.sarif"
@@ -120,7 +120,7 @@ jobs:
           output: "trivy-config-results.sarif"
 
       - name: Upload Trivy config scan results
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         if: always()
         with:
           sarif_file: "trivy-config-results.sarif"
