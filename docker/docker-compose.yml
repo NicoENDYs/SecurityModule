@@ -21,7 +21,7 @@ volumes:
 services:
   # ── OWASP ZAP — DAST scanner ─────────────────────────────────────────────────
   zap:
-    image: ghcr.io/zaproxy/zaproxy:2.16.0
+    image: ghcr.io/zaproxy/zaproxy:2.17.0
     container_name: security-lab-zap
     networks:
       - security-lab
@@ -44,7 +44,7 @@ services:
 
   # ── Trivy — image / filesystem scanner ──────────────────────────────────────
   trivy:
-    image: aquasec/trivy:0.61.0
+    image: aquasec/trivy:0.71.1
     container_name: security-lab-trivy
     networks:
       - security-lab
@@ -64,7 +64,7 @@ services:
 
   # ── Semgrep — SAST for JS/TS ─────────────────────────────────────────────────
   semgrep:
-    image: returntocorp/semgrep:1.95.0
+    image: returntocorp/semgrep:1.166.0
     container_name: security-lab-semgrep
     networks:
       - security-lab
