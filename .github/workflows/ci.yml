@@ -55,7 +55,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD/node-web":/src \
-            returntocorp/semgrep:1.95.0 \
+            returntocorp/semgrep:1.166.0 \
             sh -c '
               set -e
               mkdir -p /tmp/semgrep-tests

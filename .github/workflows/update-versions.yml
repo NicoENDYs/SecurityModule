@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Check latest versions and update versions.env
+      - name: Check latest versions and update all pinned references
         id: check
         run: |
           set -euo pipefail
@@ -34,7 +34,12 @@ jobs:
             latest=$(curl -sf "https://api.github.com/repos/${repo}/releases/latest" \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               | jq -r '.tag_name' | sed 's/^v//')
-            if [[ -n "$latest" && "$latest" != "$current" ]]; then
+            if [[ -z "$latest" ]]; then
+              echo "WARNING: could not fetch latest version for ${repo}, skipping"
+              return
+            fi
+            if [[ "$latest" != "$current" ]]; then
+              # Update versions.env
               sed -i "s/^${varname}=.*/${varname}=${latest}/" versions.env
               updates+="  - ${varname}: ${current} → ${latest}"$'\n'
               changed=true
@@ -44,10 +49,23 @@ jobs:
             fi
           }
 
-          check_github_release "aquasecurity/trivy"              "$TRIVY_VERSION"  "TRIVY_VERSION"
+          check_github_release "aquasecurity/trivy"              "$TRIVY_VERSION"   "TRIVY_VERSION"
           check_github_release "semgrep/semgrep"                 "$SEMGREP_VERSION" "SEMGREP_VERSION"
-          check_github_release "zaproxy/zaproxy"                 "$ZAP_VERSION"    "ZAP_VERSION"
-          check_github_release "docker/docker-bench-security"    "$BENCH_VERSION"  "BENCH_VERSION"
+          check_github_release "zaproxy/zaproxy"                 "$ZAP_VERSION"     "ZAP_VERSION"
+          check_github_release "docker/docker-bench-security"    "$BENCH_VERSION"   "BENCH_VERSION"
+
+          if [[ "$changed" == "true" ]]; then
+            # Re-source updated versions
+            source versions.env
+
+            # Sync docker/docker-compose.yml
+            sed -i "s|ghcr.io/zaproxy/zaproxy:[0-9.]*|ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}|" docker/docker-compose.yml
+            sed -i "s|aquasec/trivy:[0-9.]*|aquasec/trivy:${TRIVY_VERSION}|"                   docker/docker-compose.yml
+            sed -i "s|returntocorp/semgrep:[0-9.]*|returntocorp/semgrep:${SEMGREP_VERSION}|"   docker/docker-compose.yml
+
+            # Sync .github/workflows/ci.yml (semgrep unit-test step)
+            sed -i "s|returntocorp/semgrep:[0-9.]*|returntocorp/semgrep:${SEMGREP_VERSION}|"   .github/workflows/ci.yml
+          fi
 
           echo "changed=${changed}" >> "$GITHUB_OUTPUT"
           {
