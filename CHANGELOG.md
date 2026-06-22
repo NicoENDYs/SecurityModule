@@ -8,6 +8,19 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `.github/workflows/secret-iac.yml` — reusable (`workflow_call`) Secret & IaC scan: Gitleaks scans the full git history for leaked credentials and Checkov adds broader IaC policy coverage. Both run via Docker and upload SARIF to the Security tab.
+- `scripts/scan-secrets.sh` — local Gitleaks runner via Docker (`git` history / `dir` working-tree modes), mirroring `scan-trivy.sh`.
+- `GITLEAKS_VERSION` and `CHECKOV_VERSION` in `versions.env`; `update-versions.yml` now tracks both and syncs the pinned tags in `secret-iac.yml`.
+
+### Changed
+- JSON parsing in `node-web/audit.sh` and `scripts/scan-full-dockerized.sh` now uses `jq` instead of inline `python3` (one less implicit dependency, more idiomatic in Bash).
+
+### Fixed
+- `log`/`err`/`die` helpers are now defined **before** the `versions.env` source guard in `scan-trivy.sh`, `scan-zap-baseline.sh`, `docker-bench.sh` and `scan-full-dockerized.sh`. Bash has no function hoisting, so on the failure path the guard previously printed `die: command not found` instead of its intended message.
+- `node-web/audit.sh` now defines `die()` (it was referenced by the `versions.env` guard but never defined).
+- `docker-bench.sh` now defines `warn()` (it was referenced in the CI-detection branch but never defined).
+
 ---
 
 ## [1.1.0] — 2026-05-09

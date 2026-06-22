@@ -16,6 +16,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Logging helpers — defined before sourcing versions.env so the guard below can
+# call die() with a clear message (Bash has no function hoisting).
+log() { printf '\033[1;36m[trivy]\033[0m %s\n' "$*"; }
+err() { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
+die() { err "$*"; exit 1; }
+
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
 [[ -n "${TRIVY_VERSION:-}" ]] || die "TRIVY_VERSION is unset — versions.env not loaded properly"
@@ -23,10 +29,6 @@ source "$SECURITY_ROOT/versions.env"
 TRIVY_IMAGE="aquasec/trivy:${TRIVY_VERSION}"
 REPORTS_DIR="$SECURITY_ROOT/templates/reports"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-
-log() { printf '\033[1;36m[trivy]\033[0m %s\n' "$*"; }
-err() { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
-die() { err "$*"; exit 1; }
 
 require_docker() {
   command -v docker &>/dev/null || die "Docker is not installed or not in PATH."

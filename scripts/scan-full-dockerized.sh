@@ -46,6 +46,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ── Colors & logging helpers ────────────────────────────────────────────────
+# Defined before sourcing versions.env so the guard below can call die() with a
+# clear message (Bash has no function hoisting).
+RED='\033[1;31m'; GRN='\033[1;32m'; YLW='\033[1;33m'
+CYN='\033[1;36m'; RST='\033[0m'
+
+log()  { printf "${CYN}[scan]${RST} %s\n" "$*"; }
+ok()   { printf "${GRN}[PASS]${RST} %s\n" "$*"; }
+warn() { printf "${YLW}[WARN]${RST} %s\n" "$*"; }
+fail() { printf "${RED}[FAIL]${RST} %s\n" "$*"; }
+die()  { fail "$*"; exit 1; }
+
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
 for _v in TRIVY_VERSION ZAP_VERSION BENCH_VERSION SEMGREP_VERSION; do
@@ -74,16 +86,6 @@ FAIL_ON_FINDINGS=false
 COMPOSE_STARTED=false
 ALLOW_STATUS=""
 BUILT_IMAGE=""
-
-# ── Colors ─────────────────────────────────────────────────────────────────────
-RED='\033[1;31m'; GRN='\033[1;32m'; YLW='\033[1;33m'
-CYN='\033[1;36m'; RST='\033[0m'
-
-log()  { printf "${CYN}[scan]${RST} %s\n" "$*"; }
-ok()   { printf "${GRN}[PASS]${RST} %s\n" "$*"; }
-warn() { printf "${YLW}[WARN]${RST} %s\n" "$*"; }
-fail() { printf "${RED}[FAIL]${RST} %s\n" "$*"; }
-die()  { fail "$*"; exit 1; }
 
 require_docker() {
   command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
@@ -162,25 +164,10 @@ if [[ "$SKIP_SAST" == false ]]; then
   AUDIT_SCRIPT="$SECURITY_ROOT/node-web/audit.sh"
   # Pass SESSION_DIR as the output directory so reports land in this run's folder
   if bash "$AUDIT_SCRIPT" "$PROJECT_ROOT" "$SESSION_DIR" > "$SESSION_DIR/sast.log" 2>&1; then
-    NPM_CRITICAL=$(python3 -c "
-import json, glob, sys
-files = glob.glob('$SESSION_DIR/npm-audit_*.json')
-if files:
-    d = json.load(open(sorted(files)[-1]))
-    print(d.get('metadata',{}).get('vulnerabilities',{}).get('critical',0))
-else:
-    print(0)
-" 2>/dev/null || echo 0)
-    SEMGREP_ERRORS=$(python3 -c "
-import json, glob
-files = glob.glob('$SESSION_DIR/semgrep_*.json')
-if files:
-    d = json.load(open(sorted(files)[-1]))
-    errors = [r for r in d.get('results',[]) if r.get('extra',{}).get('severity','') == 'ERROR']
-    print(len(errors))
-else:
-    print(0)
-" 2>/dev/null || echo 0)
+    NPM_JSON=$(find "$SESSION_DIR" -maxdepth 1 -name 'npm-audit_*.json' | sort | tail -1)
+    NPM_CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' "$NPM_JSON" 2>/dev/null || echo 0)
+    SEMGREP_JSON=$(find "$SESSION_DIR" -maxdepth 1 -name 'semgrep_*.json' | sort | tail -1)
+    SEMGREP_ERRORS=$(jq -r '[.results[]? | select(.extra.severity == "ERROR")] | length' "$SEMGREP_JSON" 2>/dev/null || echo 0)
     if [[ "$NPM_CRITICAL" -gt 0 || "$SEMGREP_ERRORS" -gt 0 ]]; then
       warn "SAST: npm critical=$NPM_CRITICAL  semgrep errors=$SEMGREP_ERRORS"
       SCORES[sast]="WARN"
@@ -243,12 +230,7 @@ if [[ "$SKIP_TRIVY" == false ]]; then
         /reports/trivy-image.json 2>>"$SESSION_DIR/trivy.log" || true
 
     if [[ -f "$SESSION_DIR/trivy-image.json" ]]; then
-      TRIVY_VULNS=$(python3 -c "
-import json
-d = json.load(open('$SESSION_DIR/trivy-image.json'))
-total = sum(len(r.get('Vulnerabilities') or []) for r in (d.get('Results') or []))
-print(total)
-" 2>/dev/null || echo "?")
+      TRIVY_VULNS=$(jq -r '[(.Results // [])[] | (.Vulnerabilities // []) | length] | add // 0' "$SESSION_DIR/trivy-image.json" 2>/dev/null || echo "?")
       if [[ "$TRIVY_VULNS" == "0" ]]; then
         ok "Trivy: 0 vulnerabilities ($SEVERITY)"
         SCORES[trivy]="PASS"
@@ -315,12 +297,7 @@ if [[ "$SKIP_ZAP" == false ]]; then
   else
     ZAP_JSON="$SESSION_DIR/${ZAP_BASE}.json"
     if [[ -f "$ZAP_JSON" ]]; then
-      ZAP_ALERTS=$(python3 -c "
-import json
-d = json.load(open('$ZAP_JSON'))
-high = [a for s in d.get('site',[]) for a in s.get('alerts',[]) if int(a.get('riskcode',0)) >= 2]
-print(len(high))
-" 2>/dev/null || echo 0)
+      ZAP_ALERTS=$(jq -r '[(.site // [])[] | (.alerts // [])[] | select((.riskcode | tonumber) >= 2)] | length' "$ZAP_JSON" 2>/dev/null || echo 0)
       if [[ "$ZAP_ALERTS" -gt 0 ]]; then
         warn "ZAP: $ZAP_ALERTS medium/high alerts. See ${ZAP_BASE}.html"
         SCORES[zap]="WARN"

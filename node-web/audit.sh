@@ -13,6 +13,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Logging helpers — defined before sourcing versions.env so the guard below can
+# call die() with a clear message (Bash has no function hoisting).
+log()  { printf '\033[1;34m[audit]\033[0m %s\n' "$*"; }
+err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
+warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
+die()  { err "$*"; exit 1; }
+
 # shellcheck source=../versions.env
 source "$SECURITY_ROOT/versions.env"
 [[ -n "${SEMGREP_VERSION:-}" ]] || die "SEMGREP_VERSION is unset — versions.env not loaded properly"
@@ -21,10 +28,6 @@ SEMGREP_IMAGE="returntocorp/semgrep:${SEMGREP_VERSION}"
 PROJECT_ROOT="${1:-$(pwd)}"
 REPORTS_DIR="${2:-$SECURITY_ROOT/templates/reports}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-
-log()  { printf '\033[1;34m[audit]\033[0m %s\n' "$*"; }
-err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
-warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
 
 require_docker() {
   command -v docker &>/dev/null || { err "Docker is not installed or not in PATH."; exit 1; }
@@ -56,16 +59,8 @@ if [[ -f "$PROJECT_ROOT/package.json" ]]; then
     }
   fi
 
-  CRITICAL=$(python3 -c "
-import json
-d = json.load(open('$NPM_REPORT'))
-print(d.get('metadata',{}).get('vulnerabilities',{}).get('critical',0))
-" 2>/dev/null || echo "?")
-  HIGH=$(python3 -c "
-import json
-d = json.load(open('$NPM_REPORT'))
-print(d.get('metadata',{}).get('vulnerabilities',{}).get('high',0))
-" 2>/dev/null || echo "?")
+  CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' "$NPM_REPORT" 2>/dev/null || echo "?")
+  HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' "$NPM_REPORT" 2>/dev/null || echo "?")
   log "npm audit results — critical: $CRITICAL  high: $HIGH"
   log "Full report: $NPM_REPORT"
 else
@@ -95,11 +90,7 @@ docker run --rm \
   warn "Semgrep found findings or encountered errors. See: $SEMGREP_REPORT"
 }
 
-FINDINGS=$(python3 -c "
-import json
-d = json.load(open('$SEMGREP_REPORT'))
-print(len(d.get('results',[])))
-" 2>/dev/null || echo "?")
+FINDINGS=$(jq -r '.results | length' "$SEMGREP_REPORT" 2>/dev/null || echo "?")
 log "Semgrep findings: $FINDINGS"
 log "Full report: $SEMGREP_REPORT"
 

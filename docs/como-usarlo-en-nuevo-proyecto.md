@@ -93,7 +93,19 @@ bash security/scripts/scan-trivy.sh image tu-imagen:tag
 bash security/scripts/scan-trivy.sh repo https://github.com/org/repo
 ```
 
-### 3.3 Escaneo DAST contra entorno de staging (ZAP)
+### 3.3 Escaneo de secretos en el historial git (Gitleaks)
+
+```bash
+# Escaneo de todo el historial git (requiere un clon completo, no --depth=1)
+bash security/scripts/scan-secrets.sh git .
+
+# Escaneo solo del working tree (carpetas sin git)
+bash security/scripts/scan-secrets.sh dir .
+```
+
+Los reportes SARIF se guardan en `security/templates/reports/`.
+
+### 3.4 Escaneo DAST contra entorno de staging (ZAP)
 
 ```bash
 # Escaneo pasivo (baseline) — recomendado para CI/CD
@@ -103,13 +115,13 @@ bash security/scripts/scan-zap-baseline.sh https://staging.tu-app.com
 bash security/scripts/scan-zap-baseline.sh https://staging.tu-app.com ajax
 ```
 
-### 3.4 Auditoría de configuración Docker
+### 3.5 Auditoría de configuración Docker
 
 ```bash
 bash security/scripts/docker-bench.sh
 ```
 
-### 3.5 Ver reportes en el navegador
+### 3.6 Ver reportes en el navegador
 
 ```bash
 docker compose -f security/docker/docker-compose.yml --profile reports up -d
@@ -145,6 +157,15 @@ jobs:
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  # ── Gitleaks + Checkov: secretos en el historial git + IaC ────────────────
+  secret-iac:
+    name: Secret & IaC Scan
+    uses: nicoendys/securitymodule/.github/workflows/secret-iac.yml@v1
     permissions:
       contents: read
       security-events: write
@@ -209,6 +230,7 @@ Si tu proyecto construye una imagen Docker, añade esta variante de Trivy al wor
 | Herramienta | Dónde ver los resultados |
 |-------------|--------------------------|
 | Trivy (SARIF) | Security → Code scanning alerts en tu repositorio |
+| Gitleaks / Checkov (SARIF) | Security → Code scanning alerts en tu repositorio |
 | ZAP | Actions → artifacts del workflow + GitHub Issues creados automáticamente |
 | npm audit | Dependabot alerts (si está habilitado) |
 

@@ -49,10 +49,12 @@ jobs:
             fi
           }
 
-          check_github_release "aquasecurity/trivy"              "$TRIVY_VERSION"   "TRIVY_VERSION"
-          check_github_release "semgrep/semgrep"                 "$SEMGREP_VERSION" "SEMGREP_VERSION"
-          check_github_release "zaproxy/zaproxy"                 "$ZAP_VERSION"     "ZAP_VERSION"
-          check_github_release "docker/docker-bench-security"    "$BENCH_VERSION"   "BENCH_VERSION"
+          check_github_release "aquasecurity/trivy"              "$TRIVY_VERSION"    "TRIVY_VERSION"
+          check_github_release "semgrep/semgrep"                 "$SEMGREP_VERSION"  "SEMGREP_VERSION"
+          check_github_release "zaproxy/zaproxy"                 "$ZAP_VERSION"      "ZAP_VERSION"
+          check_github_release "docker/docker-bench-security"    "$BENCH_VERSION"    "BENCH_VERSION"
+          check_github_release "gitleaks/gitleaks"               "$GITLEAKS_VERSION" "GITLEAKS_VERSION"
+          check_github_release "bridgecrewio/checkov"            "$CHECKOV_VERSION"  "CHECKOV_VERSION"
 
           if [[ "$changed" == "true" ]]; then
             # Re-source updated versions
@@ -65,6 +67,10 @@ jobs:
 
             # Sync .github/workflows/ci.yml (semgrep unit-test step)
             sed -i "s|returntocorp/semgrep:[0-9.]*|returntocorp/semgrep:${SEMGREP_VERSION}|"   .github/workflows/ci.yml
+
+            # Sync .github/workflows/secret-iac.yml (gitleaks tags are v-prefixed)
+            sed -i "s|zricethezav/gitleaks:v[0-9.]*|zricethezav/gitleaks:v${GITLEAKS_VERSION}|" .github/workflows/secret-iac.yml
+            sed -i "s|bridgecrew/checkov:[0-9.]*|bridgecrew/checkov:${CHECKOV_VERSION}|"        .github/workflows/secret-iac.yml
           fi
 
           echo "changed=${changed}" >> "$GITHUB_OUTPUT"
@@ -94,5 +100,7 @@ jobs:
             - [Semgrep releases](https://github.com/semgrep/semgrep/releases)
             - [ZAP releases](https://github.com/zaproxy/zaproxy/releases)
             - [Docker Bench releases](https://github.com/docker/docker-bench-security/releases)
+            - [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases)
+            - [Checkov releases](https://github.com/bridgecrewio/checkov/releases)
           labels: "dependencies,automated"
           delete-branch: true
