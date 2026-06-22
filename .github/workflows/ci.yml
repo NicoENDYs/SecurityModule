@@ -28,6 +28,7 @@ jobs:
           shellcheck --source-path=SCRIPTDIR -x \
             scripts/scan-trivy.sh \
             scripts/scan-zap-baseline.sh \
+            scripts/scan-secrets.sh \
             scripts/scan-full-dockerized.sh \
             scripts/docker-bench.sh \
             scripts/cleanup-reports.sh \
