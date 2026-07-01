@@ -1,0 +1,54 @@
+name: Update v1 floating tag
+
+# Keeps the floating major tag `v1` pointing at the latest 1.x release, so
+# `uses: nicoendys/securitymodule/...@v1` and the `module-ref: v1` defaults in
+# the reusable workflows always resolve.
+#
+# - Runs automatically whenever a 1.x release tag (e.g. 1.5.0) is pushed:
+#   v1 is moved to that tag's commit.
+# - Can also be run manually (Actions → "Update v1 floating tag" → Run
+#   workflow) to create or repair v1. By default it points v1 at the ref the
+#   workflow was dispatched from (normally main); pass `target-ref` to point
+#   it somewhere else (a tag name or commit SHA).
+#
+# Note: pushes made with GITHUB_TOKEN do not trigger new workflow runs, and
+# `v1` itself does not match the `1.*` tag filter, so this cannot recurse.
+on:
+  push:
+    tags:
+      - "1.*"
+  workflow_dispatch:
+    inputs:
+      target-ref:
+        description: "Ref v1 should point to (tag or SHA; default: the ref this run was dispatched from)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  move-v1:
+    name: Point v1 at ${{ inputs.target-ref || github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Create or move the v1 tag
+        env:
+          TARGET: ${{ inputs.target-ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse --verify --quiet "refs/tags/${TARGET}^{commit}" \
+             || git rev-parse --verify --quiet "${TARGET}^{commit}" \
+             || git rev-parse --verify "origin/${TARGET}^{commit}")
+          echo "Pointing v1 at ${TARGET} (${SHA})"
+          git tag -f v1 "$SHA"
+          git push origin refs/tags/v1 --force
+          echo "### 🏷️ v1 floating tag updated" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`v1\` now points at \`${TARGET}\` (\`${SHA}\`)." >> "$GITHUB_STEP_SUMMARY"
