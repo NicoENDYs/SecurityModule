@@ -49,6 +49,8 @@ jobs:
           echo "Pointing v1 at ${TARGET} (${SHA})"
           git tag -f v1 "$SHA"
           git push origin refs/tags/v1 --force
-          echo "### 🏷️ v1 floating tag updated" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`v1\` now points at \`${TARGET}\` (\`${SHA}\`)." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### 🏷️ v1 floating tag updated"
+            echo ""
+            echo "\`v1\` now points at \`${TARGET}\` (\`${SHA}\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
