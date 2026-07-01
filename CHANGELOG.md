@@ -21,6 +21,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - JSON parsing in `node-web/audit.sh` and `scripts/scan-full-dockerized.sh` now uses `jq` instead of inline `python3` (one less implicit dependency, more idiomatic in Bash).
 
 ### Fixed
+- **`v1` floating tag now exists.** Every workflow example in the docs (and the `module-ref` defaults in `zap-baseline.yml` / `semgrep.yml` / `trivy.yml`) references `@v1`, but the repository only had un-prefixed release tags (`1.4.0`, `1.3.5`, …), so all `uses: …@v1` calls failed with *unable to resolve ref*. The `v1` tag is now published and moves with each 1.x release. Docs that referenced non-existent `v`-prefixed release tags (`v1.1.0`, `v1.2.0`) now use real tag names.
+- **`trivy.yml` no longer requires a `.trivy.yaml` in the consumer repo.** The reusable workflow passed `trivy-config: ".trivy.yaml"`, but that file ships with this module — not with the caller — so the filesystem scan failed for any consumer without their own copy. The workflow now checks out SecurityModule (new `module-ref` input, default `v1`) and uses its bundled `.trivy.yaml`; a new `trivy-config` input lets consumers point to their own file instead. `.trivy.yaml` gained `.security-module` in `skip-dirs` so the module checkout (and its intentional fake-secret test fixtures) is not scanned as part of the consumer's code.
+- **`.gitignore` now actually ignores scan reports.** The previous per-extension patterns (`templates/reports/*.json`, …) only matched the top level, so everything written to per-run `run_TIMESTAMP/` subdirectories — and all `.sarif` reports — was left untracked-but-visible and could be committed by accident. Replaced with `templates/reports/*` + `!templates/reports/.gitkeep`.
 - `log`/`err`/`die` helpers are now defined **before** the `versions.env` source guard in `scan-trivy.sh`, `scan-zap-baseline.sh`, `docker-bench.sh` and `scan-full-dockerized.sh`. Bash has no function hoisting, so on the failure path the guard previously printed `die: command not found` instead of its intended message.
 - `node-web/audit.sh` now defines `die()` (it was referenced by the `versions.env` guard but never defined).
 - `docker-bench.sh` now defines `warn()` (it was referenced in the CI-detection branch but never defined).
@@ -76,6 +79,6 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setup.sh` — One-shot scaffold script for new projects.
 - Docs: `como-usarlo-en-nuevo-proyecto.md`, `proyecto-dockerizado.md`, `sin-github.md`.
 
-[Unreleased]: https://github.com/nicoendys/securitymodule/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/nicoendys/securitymodule/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/nicoendys/securitymodule/releases/tag/v1.0.0
+[Unreleased]: https://github.com/nicoendys/securitymodule/compare/1.4.0...HEAD
+[1.1.0]: https://github.com/nicoendys/securitymodule/compare/1.0.1...1.1.0
+[1.0.0]: https://github.com/nicoendys/securitymodule/releases/tag/1.0.1

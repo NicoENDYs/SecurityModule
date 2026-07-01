@@ -16,6 +16,9 @@ skip-dirs:
   - .github
   - docs
   - checklists
+  # Checked out by the reusable workflows (trivy.yml) inside the consumer's
+  # workspace — its test fixtures contain intentional fake secrets.
+  - .security-module
 
 # Vulnerability types to scan
 vuln-type:
