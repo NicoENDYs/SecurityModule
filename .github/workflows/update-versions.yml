@@ -10,6 +10,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Needed because the version-bump step writes into .github/workflows/*.yml;
+  # GitHub rejects pushes touching workflow files without this scope.
+  workflows: write
 
 jobs:
   check-versions:
