@@ -1,0 +1,145 @@
+name: Semgrep SAST Scan
+
+# Reusable (workflow_call): invoked from the consumer's security.yml.
+# Runs the SAST rules shipped in this module (node-web/semgrep.yml) plus the
+# community OWASP/JS/TS/React packs against the caller's source code. Findings
+# are uploaded to the Security tab as SARIF and summarised in the run.
+#
+# Runs via Docker, consistent with the "install nothing on the host" philosophy.
+# The Semgrep image tag is read from this module's versions.env at run time, so
+# it stays in sync with update-versions.yml without touching this file.
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: "Extra Semgrep registry packs (space-separated), scanned in addition to the module's own rules"
+        required: false
+        type: string
+        default: "p/owasp-top-ten p/javascript p/typescript p/react"
+      paths:
+        description: "Path(s) to scan, relative to the repository root (space-separated)"
+        required: false
+        type: string
+        default: "."
+      fail-on-findings:
+        description: "Fail the job when Semgrep reports ERROR-level findings"
+        required: false
+        type: boolean
+        default: false
+      module-ref:
+        description: "Git ref of NicoENDYs/SecurityModule to source rules + versions.env from"
+        required: false
+        type: string
+        default: "v1"
+    outputs:
+      error-count:
+        description: "Number of ERROR-level Semgrep findings"
+        value: ${{ jobs.semgrep.outputs.error-count }}
+
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to the Security tab
+  actions: read
+
+jobs:
+  semgrep:
+    name: Semgrep — JS/TS/React SAST
+    runs-on: ubuntu-latest
+    outputs:
+      error-count: ${{ steps.summary.outputs.errors }}
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Checkout SecurityModule (rules + versions.env live here)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: NicoENDYs/SecurityModule
+          ref: ${{ inputs.module-ref || 'v1' }}
+          path: .security-module
+
+      - name: Run Semgrep (via Docker)
+        env:
+          EXTRA_CONFIG: ${{ inputs.config }}
+          SCAN_PATHS: ${{ inputs.paths }}
+        run: |
+          set -euo pipefail
+
+          # Pin the Semgrep image to the version tracked in the module's versions.env.
+          SEMGREP_VERSION="$(sed -n 's/^SEMGREP_VERSION=//p' .security-module/versions.env)"
+          [ -n "$SEMGREP_VERSION" ] || { echo "::error::SEMGREP_VERSION not found in versions.env"; exit 1; }
+
+          # Build --config flags for each extra registry pack, and the path list.
+          read -ra packs <<< "$EXTRA_CONFIG"
+          extra=()
+          for c in "${packs[@]}"; do extra+=(--config "$c"); done
+          read -ra paths <<< "$SCAN_PATHS"
+          [ "${#paths[@]}" -gt 0 ] || paths=(".")
+
+          # Mount the workspace read-write so Semgrep can write the SARIF report,
+          # and exclude the checked-out module so we don't scan its own fixtures.
+          docker run --rm \
+            -w /src \
+            -v "$PWD":/src \
+            -v "$PWD/.security-module/node-web/semgrep.yml":/semgrep.yml:ro \
+            "returntocorp/semgrep:${SEMGREP_VERSION}" \
+            semgrep \
+              --config /semgrep.yml \
+              "${extra[@]}" \
+              --sarif \
+              --output /src/semgrep.sarif \
+              --metrics off \
+              --exclude .security-module \
+              "${paths[@]}" \
+            || echo "Semgrep exited non-zero (findings or scan errors) — see the SARIF report and summary."
+
+      - name: Upload SARIF (Semgrep)
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      - name: Summarise findings
+        id: summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          if [ ! -f semgrep.sarif ]; then
+            echo "errors=0" >> "$GITHUB_OUTPUT"
+            echo "Semgrep produced no SARIF report — the scan step likely failed to start." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          TOTAL=$(jq '[.runs[].results[]] | length' semgrep.sarif 2>/dev/null || echo 0)
+          ERRORS=$(jq '[.runs[].results[] | select(.level == "error")] | length' semgrep.sarif 2>/dev/null || echo 0)
+          WARNINGS=$(jq '[.runs[].results[] | select(.level == "warning")] | length' semgrep.sarif 2>/dev/null || echo 0)
+          NOTES=$(jq '[.runs[].results[] | select(.level == "note")] | length' semgrep.sarif 2>/dev/null || echo 0)
+
+          echo "errors=$ERRORS" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 🔎 Semgrep SAST — results"
+            echo ""
+            echo "| Severity | Count |"
+            echo "|----------|-------|"
+            echo "| 🔴 Error (blocking) | $ERRORS |"
+            echo "| 🟡 Warning | $WARNINGS |"
+            echo "| 🔵 Note | $NOTES |"
+            echo "| **Total** | **$TOTAL** |"
+            echo ""
+            echo "See **Security → Code scanning alerts** for the full list."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gate on ERROR-level findings
+        if: ${{ inputs.fail-on-findings }}
+        env:
+          ERRORS: ${{ steps.summary.outputs.errors }}
+        run: |
+          set -euo pipefail
+          if [ "${ERRORS:-0}" -gt 0 ]; then
+            echo "::error::Semgrep found $ERRORS ERROR-level finding(s) and fail-on-findings is enabled."
+            exit 1
+          fi
+          echo "No ERROR-level findings — gate passed."

@@ -7,9 +7,13 @@
 A reusable security-testing scaffold designed to be added as a **Git submodule** to any Node.js or React project. It standardises:
 
 - Security checklists (OWASP WSTG, API Security Top 10, Docker Hardening)
-- Local scan scripts (Trivy, ZAP, Docker Bench) that run via Docker — no host installs needed
-- Reusable GitHub Actions workflows (Trivy + ZAP) callable with `workflow_call`
+- Local scan scripts (Trivy, ZAP, Gitleaks, Docker Bench) that run via Docker — no host installs needed
+- Reusable GitHub Actions workflows (Semgrep SAST + Trivy + Secret/IaC + ZAP) callable with `workflow_call`
 - Semgrep SAST rules tailored for JavaScript / TypeScript / React
+
+> **🚀 New to security scanning?** Start with the beginner-friendly, jargon-light
+> walkthrough: [`docs/guia-principiantes.md`](docs/guia-principiantes.md). It gets
+> you from zero to your first scan (and automated CI checks) in a few minutes.
 
 ---
 
@@ -31,7 +35,9 @@ security-testing-template/
 │   ├── zap/rules.tsv                 # ZAP alert filter rules
 │   └── reports/                      # Output directory for all scan reports
 ├── .github/workflows/
+│   ├── semgrep.yml                   # Reusable Semgrep SAST workflow
 │   ├── trivy.yml                     # Reusable Trivy workflow
+│   ├── secret-iac.yml               # Reusable Gitleaks + Checkov workflow
 │   └── zap-baseline.yml              # Reusable ZAP DAST workflow
 ├── node-web/
 │   ├── semgrep.yml                   # Semgrep rules for JS/TS/React
@@ -41,6 +47,7 @@ security-testing-template/
 ├── dast/
 │   └── zap-full-scan.conf            # ZAP active scan configuration
 └── docs/
+    ├── guia-principiantes.md             # Beginner-friendly quick start (start here)
     ├── como-usarlo-en-nuevo-proyecto.md  # Submodule setup + GitHub Actions integration
     ├── proyecto-dockerizado.md           # Full guide for Dockerized apps
     └── sin-github.md                     # GitLab CI, Bitbucket, Jenkins, local-only
@@ -109,6 +116,7 @@ bash security/scripts/docker-bench.sh
 
 | Guide | Description |
 |-------|-------------|
+| [`docs/guia-principiantes.md`](docs/guia-principiantes.md) | **Start here.** Zero-to-first-scan walkthrough for beginners, glossary, troubleshooting |
 | [`docs/como-usarlo-en-nuevo-proyecto.md`](docs/como-usarlo-en-nuevo-proyecto.md) | Add as git submodule, run local scans, integrate GitHub Actions |
 | [`docs/proyecto-dockerizado.md`](docs/proyecto-dockerizado.md) | Full workflow for Dockerized apps: build → scan → ZAP → summary report |
 | [`docs/sin-github.md`](docs/sin-github.md) | Use without GitHub: GitLab CI, Bitbucket Pipelines, Jenkins, local-only |
@@ -118,6 +126,29 @@ bash security/scripts/docker-bench.sh
 ## Using the GitHub Actions Workflows
 
 The workflows in `.github/workflows/` are designed for `workflow_call` — they are called from your project's own workflows, not run directly here.
+
+> **Just want everything at once?** Copy the single ready-to-use `security.yml`
+> from the [beginner guide](docs/guia-principiantes.md#7-activar-los-escaneos-automáticos-en-github) —
+> it wires up Semgrep, Trivy and Secret/IaC in one file.
+
+### Semgrep SAST in your project CI
+
+Runs the module's Semgrep rules (plus the OWASP/JS/TS/React community packs)
+against your source code and uploads findings to the Security tab.
+
+```yaml
+jobs:
+  sast:
+    uses: nicoendys/securitymodule/.github/workflows/semgrep.yml@v1
+    with:
+      # Optional — override the community packs, or add your own:
+      config: "p/owasp-top-ten p/javascript p/typescript p/react"
+      fail-on-findings: false
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+```
 
 ### Trivy in your project CI
 
@@ -137,6 +168,21 @@ jobs:
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+```
+
+### Secret & IaC scan in your project CI
+
+Gitleaks scans your full git history for leaked credentials; Checkov adds broader
+IaC policy coverage.
+
+```yaml
+jobs:
+  secret-iac:
+    uses: nicoendys/securitymodule/.github/workflows/secret-iac.yml@v1
     permissions:
       contents: read
       security-events: write
