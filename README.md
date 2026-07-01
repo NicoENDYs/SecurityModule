@@ -259,14 +259,18 @@ docker run --rm -v "$(pwd)":/src -v "$(pwd)/security/node-web/semgrep.yml":/semg
 
 | Ref | Recommended use |
 |-----|-----------------|
-| `@v1` | Latest stable 1.x release — **recommended** |
-| `@v1.1.0` | Pinned to a specific release (compliance environments) |
+| `@v1` | Floating tag → latest stable 1.x release — **recommended** |
+| `@1.4.0` | Pinned to a specific release (compliance environments) |
 | `@main` | Bleeding edge — **not recommended** for production |
+
+> **Note:** release tags have **no `v` prefix** (`1.4.0`, `1.3.5`, …). The only
+> `v`-prefixed ref is the floating major tag `v1`, which always points to the
+> latest 1.x release.
 
 When using as a submodule, pin to a tag:
 ```bash
-cd security && git checkout v1.1.0 && cd ..
-git add security && git commit -m "chore(security): pin to v1.1.0"
+cd security && git checkout 1.4.0 && cd ..
+git add security && git commit -m "chore(security): pin to 1.4.0"
 ```
 
 ---

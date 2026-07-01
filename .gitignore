@@ -1,9 +1,7 @@
-# Scan reports (ephemeral artifacts — not tracked in git)
-templates/reports/*.json
-templates/reports/*.html
-templates/reports/*.txt
-templates/reports/*.log
-templates/reports/*.md
+# Scan reports (ephemeral artifacts — not tracked in git).
+# Covers everything the scripts write: per-run run_*/ subdirectories,
+# SARIF/JSON/HTML/table reports, and logs.
+templates/reports/*
 
 # Keep the directory
 !templates/reports/.gitkeep

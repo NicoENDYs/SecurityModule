@@ -20,6 +20,16 @@ on:
         required: false
         type: boolean
         default: false
+      trivy-config:
+        description: "Path to a Trivy config file in your repository (leave empty to use the .trivy.yaml shipped with SecurityModule)"
+        required: false
+        type: string
+        default: ""
+      module-ref:
+        description: "Git ref of NicoENDYs/SecurityModule to source the default .trivy.yaml from"
+        required: false
+        type: string
+        default: "v1"
     outputs:
       critical-count:
         description: "Number of CRITICAL vulnerabilities found in the filesystem scan"
@@ -40,12 +50,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # The default Trivy config ships with SecurityModule, not with the consumer
+      # repo — check the module out so the config path below always exists.
+      - name: Checkout SecurityModule (default .trivy.yaml lives here)
+        if: ${{ inputs.trivy-config == '' }}
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: NicoENDYs/SecurityModule
+          ref: ${{ inputs.module-ref || 'v1' }}
+          path: .security-module
+
       - name: Run Trivy — filesystem scan
         uses: aquasecurity/trivy-action@18f2505d82a6b8627de8d67e056a0e7db864cfe6 # v0.31.0
         with:
           scan-type: "fs"
           scan-ref: "."
-          trivy-config: ".trivy.yaml"
+          trivy-config: ${{ inputs.trivy-config || '.security-module/.trivy.yaml' }}
           severity: ${{ inputs.severity || 'HIGH,CRITICAL' }}
           exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
           ignore-unfixed: true
@@ -78,6 +98,7 @@ jobs:
         with:
           scan-type: "fs"
           scan-ref: "."
+          trivy-config: ${{ inputs.trivy-config || '.security-module/.trivy.yaml' }}
           severity: ${{ inputs.severity || 'HIGH,CRITICAL' }}
           exit-code: "0"
           ignore-unfixed: true
