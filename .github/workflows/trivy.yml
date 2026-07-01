@@ -58,6 +58,13 @@ jobs:
         run: |
           COUNT=$(jq '[.runs[].results[] | select(.level == "error")] | length' trivy-fs-results.sarif 2>/dev/null || echo 0)
           echo "critical=$COUNT" >> "$GITHUB_OUTPUT"
+          {
+            echo "### 🛡️ Trivy — filesystem scan"
+            echo ""
+            echo "CRITICAL (error-level) findings: **${COUNT}**"
+            echo ""
+            echo "See **Security → Code scanning alerts** (category \`trivy-filesystem\`) for details."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Trivy FS scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2

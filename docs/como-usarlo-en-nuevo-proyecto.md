@@ -2,6 +2,11 @@
 
 Esta guía explica paso a paso cómo integrar este repositorio como **submódulo de Git** en cualquier proyecto Node.js o React, y cómo invocar los flujos de GitHub Actions desde el repositorio principal.
 
+> 🚀 **¿Es tu primera vez con herramientas de seguridad?** Empieza por la
+> [guía para principiantes](guia-principiantes.md): explica cada concepto sin
+> tecnicismos y te lleva de cero a tu primer escaneo. Esta guía asume que ya
+> conoces lo básico de Git y CI/CD.
+
 ---
 
 ## Requisitos previos
@@ -150,6 +155,17 @@ on:
     - cron: "0 7 * * 1"  # Cada lunes a las 07:00 UTC
 
 jobs:
+  # ── Semgrep: SAST sobre tu código JS/TS/React ─────────────────────────────
+  sast:
+    name: Semgrep SAST
+    uses: nicoendys/securitymodule/.github/workflows/semgrep.yml@v1
+    with:
+      fail-on-findings: false
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
   # ── Trivy: escaneo de dependencias, filesystem e IaC ──────────────────────
   trivy:
     name: Trivy Vulnerability Scan
@@ -229,6 +245,7 @@ Si tu proyecto construye una imagen Docker, añade esta variante de Trivy al wor
 
 | Herramienta | Dónde ver los resultados |
 |-------------|--------------------------|
+| Semgrep (SARIF) | Security → Code scanning alerts en tu repositorio (categoría `semgrep`) |
 | Trivy (SARIF) | Security → Code scanning alerts en tu repositorio |
 | Gitleaks / Checkov (SARIF) | Security → Code scanning alerts en tu repositorio |
 | ZAP | Actions → artifacts del workflow + GitHub Issues creados automáticamente |

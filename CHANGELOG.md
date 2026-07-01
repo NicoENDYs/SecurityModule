@@ -9,11 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `.github/workflows/semgrep.yml` — reusable (`workflow_call`) Semgrep SAST scan. Runs this module's rules (`node-web/semgrep.yml`) plus the OWASP/JS/TS/React community packs against the caller's source, uploads SARIF to the Security tab, writes a job summary, and supports an optional `fail-on-findings` gate on ERROR-level findings. The Semgrep image tag is read from `versions.env` at run time, so it stays in sync without editing the workflow. Closes the gap where the module shipped Semgrep rules but had no reusable CI workflow to run them.
 - `.github/workflows/secret-iac.yml` — reusable (`workflow_call`) Secret & IaC scan: Gitleaks scans the full git history for leaked credentials and Checkov adds broader IaC policy coverage. Both run via Docker and upload SARIF to the Security tab.
 - `scripts/scan-secrets.sh` — local Gitleaks runner via Docker (`git` history / `dir` working-tree modes), mirroring `scan-trivy.sh`.
 - `GITLEAKS_VERSION` and `CHECKOV_VERSION` in `versions.env`; `update-versions.yml` now tracks both and syncs the pinned tags in `secret-iac.yml`.
+- `docs/guia-principiantes.md` — beginner-friendly, jargon-light quick-start guide: what each tool does, a minimal glossary, zero-to-first-scan steps, a single copy-paste `security.yml`, how to read results, troubleshooting, FAQ, and a command cheat sheet.
 
 ### Changed
+- `.github/workflows/trivy.yml` and `.github/workflows/secret-iac.yml` now write a concise results summary to the GitHub Actions run summary (`$GITHUB_STEP_SUMMARY`) so findings counts are visible without opening the Security tab.
+- `README.md` and `docs/como-usarlo-en-nuevo-proyecto.md` document the new Semgrep workflow and the aggregated `security.yml`, and link to the beginner guide.
 - JSON parsing in `node-web/audit.sh` and `scripts/scan-full-dockerized.sh` now uses `jq` instead of inline `python3` (one less implicit dependency, more idiomatic in Bash).
 
 ### Fixed
