@@ -89,7 +89,7 @@ services:
   # ── Dummy target (replace with your actual app for integration tests) ────────
   # nginx listens on port 80 internally; host port 3000 maps to it.
   target:
-    image: nginx:alpine
+    image: ${NGINX_IMAGE:?set in versions.env}
     container_name: security-lab-target
     networks:
       - security-lab
@@ -112,7 +112,7 @@ services:
 
   # ── Report viewer (simple HTTP server for browsing HTML reports) ─────────────
   report-viewer:
-    image: nginx:alpine
+    image: ${NGINX_IMAGE:?set in versions.env}
     container_name: security-lab-reports
     networks:
       - security-lab
