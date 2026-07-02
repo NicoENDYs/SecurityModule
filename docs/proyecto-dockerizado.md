@@ -283,6 +283,21 @@ jobs:
 **¿ZAP puede escanear una app que corre dentro de docker-compose en el mismo host?**  
 Sí. El script `scan-full-dockerized.sh` arranca ZAP con `--network host`, por lo que accede a `localhost:PUERTO` del host aunque la app corra en contenedor.
 
+**¿Mi app requiere login — puedo escanear las páginas autenticadas?**  
+Sí. Pasa las tres credenciales al orquestador y hará un escaneo autenticado vía el ZAP Automation Framework:
+
+```bash
+bash security/scripts/scan-full-dockerized.sh \
+  --project-root . --url http://localhost:3000 \
+  --zap-auth-url http://localhost:3000/login \
+  --zap-auth-user admin --zap-auth-pass 'tu-password'
+```
+
+El plan generado incluye las credenciales, se escribe con permisos `600` y se borra al terminar. **Verifica siempre que el login funcionó**: revisa las líneas de autenticación en `zap.log` y confirma que aparecen páginas autenticadas en el reporte. Nota: en modo autenticado no se aplican los filtros de `rules.tsv`. El formulario por defecto asume campos `username`/`password`; si tu login usa otros nombres, ajusta `loginRequestBody` en `scan-zap-baseline.sh`.
+
+**¿Genera un SBOM (inventario de dependencias)?**  
+Sí. `scan-trivy.sh image <img>` produce además un SBOM en formato CycloneDX (`*.sbom.cdx.json`) junto al reporte de vulnerabilidades — útil para cumplimiento (NTIA, EU CRA).
+
 **¿Y si mi app usa HTTPS en local (certificado autofirmado)?**  
 Pasa la flag `-k` a ZAP. Edita la línea `zap-baseline.py` en el script y añade `-z "-config connection.sslInsecureConnect=true"`.
 

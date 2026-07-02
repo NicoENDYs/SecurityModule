@@ -4,9 +4,13 @@
 #
 # Usage:
 #   ./scripts/scan-trivy.sh fs [path]               # filesystem scan (default: project root)
-#   ./scripts/scan-trivy.sh image <image:tag>       # Docker image scan
+#   ./scripts/scan-trivy.sh image <image:tag>       # Docker image scan (+ CycloneDX SBOM)
 #   ./scripts/scan-trivy.sh repo <git-url>          # remote repository scan
 #   ./scripts/scan-trivy.sh git-history [path]      # scan local git history for leaked secrets
+#
+# The image mode also generates a Software Bill of Materials (SBOM) in
+# CycloneDX format (<report>.sbom.cdx.json) — increasingly required for
+# compliance (NTIA minimum elements, EU Cyber Resilience Act).
 #
 # Note on git-history: Trivy's repo mode scans the full commit history when run
 # against a local directory. Requires a complete clone (not --depth=1).
@@ -95,9 +99,20 @@ case "$SCAN_MODE" in
         --output /reports/"${REPORT_NAME}.txt" \
         /reports/"${REPORT_NAME}.json"
 
+    log "Generating SBOM (CycloneDX)…"
+    docker run --rm \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v "$REPORTS_DIR":/reports \
+      -v securitymodule-trivy-cache:/root/.cache/trivy \
+      "$TRIVY_IMAGE" image \
+        --format cyclonedx \
+        --output /reports/"${REPORT_NAME}.sbom.cdx.json" \
+        "$IMAGE_TAG"
+
     log "Reports saved:"
     log "  $REPORTS_DIR/${REPORT_NAME}.txt"
     log "  $REPORTS_DIR/${REPORT_NAME}.json"
+    log "  $REPORTS_DIR/${REPORT_NAME}.sbom.cdx.json  (SBOM — CycloneDX)"
     ;;
 
   repo)

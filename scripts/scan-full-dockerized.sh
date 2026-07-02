@@ -29,6 +29,9 @@
 #   --fail-on-findings           Exit 1 if any HIGH/CRITICAL findings (default: warn only)
 #   --allow-status   CODE        Additional HTTP status code accepted as "ready" by wait_for_url
 #                                (default: only 2xx; use e.g. --allow-status 503 for maintenance pages)
+#   --zap-auth-url   URL         Login form URL — enables an authenticated ZAP scan
+#   --zap-auth-user  USER        Username / email for ZAP login (required with --zap-auth-url)
+#   --zap-auth-pass  PASS        Password for ZAP login (required with --zap-auth-url)
 #   -h, --help                   Show this help
 #
 # Example:
@@ -86,6 +89,9 @@ FAIL_ON_FINDINGS=false
 COMPOSE_STARTED=false
 ALLOW_STATUS=""
 BUILT_IMAGE=""
+ZAP_AUTH_URL=""
+ZAP_AUTH_USER=""
+ZAP_AUTH_PASS=""
 
 require_docker() {
   command -v docker &>/dev/null || die "Docker is not installed or not in PATH."
@@ -110,6 +116,9 @@ while [[ $# -gt 0 ]]; do
     --skip-bench)       SKIP_BENCH=true; shift ;;
     --fail-on-findings) FAIL_ON_FINDINGS=true; shift ;;
     --allow-status)    ALLOW_STATUS="$2"; shift 2 ;;
+    --zap-auth-url)    ZAP_AUTH_URL="$2"; shift 2 ;;
+    --zap-auth-user)   ZAP_AUTH_USER="$2"; shift 2 ;;
+    --zap-auth-pass)   ZAP_AUTH_PASS="$2"; shift 2 ;;
     -h|--help)
       sed -n '/^# Usage/,/^[^#]/{ /^#/{ s/^# \{0,1\}//; p } }' "$0"
       exit 0 ;;
@@ -120,6 +129,10 @@ done
 # ── Validation ─────────────────────────────────────────────────────────────────
 require_docker
 [[ -d "$PROJECT_ROOT" ]] || die "Project root does not exist: $PROJECT_ROOT"
+if [[ -n "$ZAP_AUTH_URL$ZAP_AUTH_USER$ZAP_AUTH_PASS" ]]; then
+  [[ -n "$ZAP_AUTH_URL" && -n "$ZAP_AUTH_USER" && -n "$ZAP_AUTH_PASS" ]] || \
+    die "--zap-auth-url, --zap-auth-user, and --zap-auth-pass must be provided together."
+fi
 
 mkdir -p "$SESSION_DIR"
 
@@ -264,52 +277,35 @@ if [[ "$SKIP_ZAP" == false ]]; then
     wait_for_url "$READINESS_URL" 10
   fi
 
-  ZAP_BASE="zap-baseline_${TIMESTAMP}"
-  ZAP_RULES="$SECURITY_ROOT/templates/zap/rules.tsv"
-  RULES_MOUNT=()
-  RULES_FLAG=()
-  if [[ -f "$ZAP_RULES" ]]; then
-    RULES_MOUNT=(-v "$ZAP_RULES":/zap/rules.tsv:ro)
-    RULES_FLAG=(-c /zap/rules.tsv)
+  # Delegate to scan-zap-baseline.sh so both entry points share one
+  # implementation. --network-host lets the ZAP container reach the app on
+  # localhost; auth flags (if provided) switch it to an authenticated scan.
+  ZAP_ARGS=(--reports-dir "$SESSION_DIR" --network-host)
+  if [[ -n "$ZAP_AUTH_URL" ]]; then
+    ZAP_ARGS+=(--zap-auth-url "$ZAP_AUTH_URL" --zap-auth-user "$ZAP_AUTH_USER" --zap-auth-pass "$ZAP_AUTH_PASS")
   fi
 
   ZAP_EXIT=0
-  docker run --rm \
-    --network host \
-    -v "$SESSION_DIR":/zap/wrk/:rw \
-    "${RULES_MOUNT[@]+"${RULES_MOUNT[@]}"}" \
-    "ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}" \
-    zap-baseline.py \
-      -t "$ZAP_URL" \
-      -r "${ZAP_BASE}.html" \
-      -J "${ZAP_BASE}.json" \
-      -w "${ZAP_BASE}.md" \
-      "${RULES_FLAG[@]+"${RULES_FLAG[@]}"}" \
-      -I 2>"$SESSION_DIR/zap.log" || ZAP_EXIT=$?
+  bash "$SCRIPT_DIR/scan-zap-baseline.sh" "${ZAP_ARGS[@]}" "$ZAP_URL" baseline \
+    > "$SESSION_DIR/zap.log" 2>&1 || ZAP_EXIT=$?
 
-  if [[ $ZAP_EXIT -eq 2 ]]; then
-    warn "ZAP found FAIL-level alerts (exit 2). See ${ZAP_BASE}.html"
-    SCORES[zap]="WARN"
-    CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + 1))
-  elif [[ $ZAP_EXIT -ne 0 ]]; then
-    warn "ZAP unexpected exit $ZAP_EXIT — check $SESSION_DIR/zap.log"
-    SCORES[zap]="WARN"
-  else
-    ZAP_JSON="$SESSION_DIR/${ZAP_BASE}.json"
-    if [[ -f "$ZAP_JSON" ]]; then
-      ZAP_ALERTS=$(jq -r '[(.site // [])[] | (.alerts // [])[] | select((.riskcode | tonumber) >= 2)] | length' "$ZAP_JSON" 2>/dev/null || echo 0)
-      if [[ "$ZAP_ALERTS" -gt 0 ]]; then
-        warn "ZAP: $ZAP_ALERTS medium/high alerts. See ${ZAP_BASE}.html"
-        SCORES[zap]="WARN"
-        CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + ZAP_ALERTS))
-      else
-        ok "ZAP: no medium/high alerts"
-        SCORES[zap]="PASS"
-      fi
+  ZAP_JSON=$(find "$SESSION_DIR" -maxdepth 1 -name 'zap-baseline_*.json' 2>/dev/null | sort | tail -1)
+  if [[ -n "$ZAP_JSON" && -f "$ZAP_JSON" ]]; then
+    ZAP_ALERTS=$(jq -r '[(.site // [])[] | (.alerts // [])[] | select((.riskcode | tonumber) >= 2)] | length' "$ZAP_JSON" 2>/dev/null || echo 0)
+    if [[ "$ZAP_ALERTS" -gt 0 ]]; then
+      warn "ZAP: $ZAP_ALERTS medium/high alerts. See $(basename "${ZAP_JSON%.json}").html"
+      SCORES[zap]="WARN"
+      CRITICAL_FINDINGS=$((CRITICAL_FINDINGS + ZAP_ALERTS))
     else
-      ok "ZAP: scan completed (no JSON to parse)"
+      ok "ZAP: no medium/high alerts"
       SCORES[zap]="PASS"
     fi
+  elif [[ $ZAP_EXIT -ne 0 ]]; then
+    warn "ZAP scan failed (exit $ZAP_EXIT) — check $SESSION_DIR/zap.log"
+    SCORES[zap]="WARN"
+  else
+    ok "ZAP: scan completed (no JSON to parse)"
+    SCORES[zap]="PASS"
   fi
 
   if [[ "$COMPOSE_STARTED" == true ]]; then

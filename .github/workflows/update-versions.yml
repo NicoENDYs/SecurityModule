@@ -49,12 +49,36 @@ jobs:
             fi
           }
 
+          # Refresh the pinned digest of a base image from the Docker Hub API.
+          # image_ref is "name:tag" (no digest); hub_repo is e.g. "library/nginx".
+          check_dockerhub_digest() {
+            local hub_repo="$1" image_ref="$2" varname="$3" current="$4"
+            local tag="${image_ref##*:}" digest
+            digest=$(curl -sf "https://hub.docker.com/v2/repositories/${hub_repo}/tags/${tag}" \
+              | jq -r '.digest // empty')
+            if [[ -z "$digest" ]]; then
+              echo "WARNING: could not fetch digest for ${hub_repo}:${tag}, skipping"
+              return
+            fi
+            if [[ "$current" != "${image_ref}@${digest}" ]]; then
+              sed -i "s|^${varname}=.*|${varname}=${image_ref}@${digest}|" versions.env
+              updates+="  - ${varname}: digest refreshed → ${digest}"$'\n'
+              changed=true
+              echo "Updated ${varname} digest → ${digest}"
+            else
+              echo "${varname} digest is up to date"
+            fi
+          }
+
           check_github_release "aquasecurity/trivy"              "$TRIVY_VERSION"    "TRIVY_VERSION"
           check_github_release "semgrep/semgrep"                 "$SEMGREP_VERSION"  "SEMGREP_VERSION"
           check_github_release "zaproxy/zaproxy"                 "$ZAP_VERSION"      "ZAP_VERSION"
           check_github_release "docker/docker-bench-security"    "$BENCH_VERSION"    "BENCH_VERSION"
           check_github_release "gitleaks/gitleaks"               "$GITLEAKS_VERSION" "GITLEAKS_VERSION"
           check_github_release "bridgecrewio/checkov"            "$CHECKOV_VERSION"  "CHECKOV_VERSION"
+
+          check_dockerhub_digest "library/node"  "node:22-alpine" "NODE_IMAGE"  "$NODE_IMAGE"
+          check_dockerhub_digest "library/nginx" "nginx:alpine"   "NGINX_IMAGE" "$NGINX_IMAGE"
 
           if [[ "$changed" == "true" ]]; then
             # Re-source updated versions
