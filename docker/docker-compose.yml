@@ -8,6 +8,10 @@
 #
 # Override the target URL:
 #   TARGET_URL=http://target:80 docker compose ... up
+#
+# Tool versions are interpolated from ../versions.env (single source of truth).
+# The `.env` symlink in this directory makes Docker Compose load it
+# automatically — do not hardcode versions here.
 
 networks:
   security-lab:
@@ -21,7 +25,7 @@ volumes:
 services:
   # ── OWASP ZAP — DAST scanner ─────────────────────────────────────────────────
   zap:
-    image: ghcr.io/zaproxy/zaproxy:2.17.0
+    image: ghcr.io/zaproxy/zaproxy:${ZAP_VERSION:?set in versions.env}
     container_name: security-lab-zap
     networks:
       - security-lab
@@ -44,7 +48,7 @@ services:
 
   # ── Trivy — image / filesystem scanner ──────────────────────────────────────
   trivy:
-    image: aquasec/trivy:0.71.1
+    image: aquasec/trivy:${TRIVY_VERSION:?set in versions.env}
     container_name: security-lab-trivy
     networks:
       - security-lab
@@ -64,7 +68,7 @@ services:
 
   # ── Semgrep — SAST for JS/TS ─────────────────────────────────────────────────
   semgrep:
-    image: returntocorp/semgrep:1.166.0
+    image: returntocorp/semgrep:${SEMGREP_VERSION:?set in versions.env}
     container_name: security-lab-semgrep
     networks:
       - security-lab

@@ -324,17 +324,10 @@ fi
 # ── Step 4: Docker Bench ──────────────────────────────────────────────────────
 if [[ "$SKIP_BENCH" == false ]]; then
   log "━━━ Step 4/4: Docker Bench for Security ━━━"
-  docker run --rm \
-    --net host \
-    --pid host \
-    --userns host \
-    --cap-add audit_control \
-    -e DOCKER_CONTENT_TRUST=0 \
-    -v /etc:/etc:ro \
-    -v /var/lib:/var/lib:ro \
-    -v /var/run/docker.sock:/var/run/docker.sock:ro \
-    --label docker_bench_security \
-    "docker/docker-bench-security:${BENCH_VERSION}" \
+  # Delegate to docker-bench.sh so both entry points share one implementation:
+  # same mounts, and the CI detection that omits --pid/--userns host on
+  # restricted runners (GitHub Actions and most shared CI).
+  bash "$SCRIPT_DIR/docker-bench.sh" "" "$SESSION_DIR" \
     > "$SESSION_DIR/docker-bench.log" 2>&1 || true
 
   BENCH_WARNS=$(grep -c '\[WARN\]' "$SESSION_DIR/docker-bench.log" || true)

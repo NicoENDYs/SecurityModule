@@ -277,10 +277,14 @@ git add security && git commit -m "chore(security): pin to 1.4.0"
 
 ## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide: branch naming,
+commit conventions, what CI enforces, how to add Semgrep rules with test
+fixtures, and how tool versions are managed. In short:
+
 1. Fork this repository.
 2. Create a branch: `git checkout -b feat/your-change`.
-3. Commit with clear messages.
-4. Open a pull request.
+3. Commit with clear messages (Conventional Commits) and update `CHANGELOG.md`.
+4. Open a pull request — the template guides you — and make sure `ci.yml` is green.
 
 ---
 
