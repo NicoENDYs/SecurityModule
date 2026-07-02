@@ -68,3 +68,89 @@ jobs:
               done
               semgrep --test /tmp/semgrep-tests/
             '
+
+  self-scan:
+    name: Self-scan — dogfood the detection scripts
+    runs-on: ubuntu-latest
+    # Runs this module's own scanners against this repository. The scripts force
+    # exit 0 on findings (they report, they don't gate), so this job fails only
+    # if a script itself breaks — catching regressions like the ones fixed in
+    # PRs #26–#29. Findings are uploaded as an artifact for review.
+    steps:
+      - name: Checkout (full history for Gitleaks)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Trivy filesystem scan (vulns + secrets)
+        run: bash scripts/scan-trivy.sh fs "$PWD"
+
+      - name: Gitleaks secret scan (git history)
+        run: bash scripts/scan-secrets.sh git "$PWD"
+
+      - name: Upload self-scan reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: self-scan-reports
+          path: templates/reports/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  e2e:
+    name: E2E — full pipeline vs dummy target
+    runs-on: ubuntu-latest
+    # Exercises scripts/scan-full-dockerized.sh end to end against a throwaway
+    # nginx target: SAST → Trivy image scan → compose up → ZAP → summary. Proves
+    # the orchestrator (and the ZAP delegation) wires together without a real
+    # project. Docker Bench is skipped (needs host privileges, unreliable on
+    # shared runners). Findings do not fail the job — only a broken pipeline does.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Prepare a throwaway target project
+        run: |
+          mkdir -p /tmp/e2e-app
+          # A minimal compose stack the orchestrator can bring up. nginx:alpine
+          # is a disposable test target here, not a shipped artifact.
+          cat > /tmp/e2e-app/docker-compose.yml <<'YAML'
+          services:
+            app:
+              image: nginx:alpine
+              ports:
+                - "3000:80"
+          YAML
+
+      - name: Run the full-dockerized orchestrator
+        run: |
+          bash scripts/scan-full-dockerized.sh \
+            --project-root /tmp/e2e-app \
+            --compose-file docker-compose.yml \
+            --service app \
+            --url http://localhost:3000 \
+            --image nginx:alpine \
+            --timeout 120 \
+            --skip-bench
+
+      - name: Assert a summary report was produced
+        run: |
+          set -euo pipefail
+          summary=$(find templates/reports -name summary.txt | sort | tail -1)
+          [ -n "$summary" ] || { echo "::error::orchestrator produced no summary.txt"; exit 1; }
+          echo "Found summary: $summary"
+          cat "$summary"
+          grep -q "Security Scan Summary" "$summary" || { echo "::error::summary.txt missing header"; exit 1; }
+          for tool in sast trivy zap; do
+            grep -qE "^ ${tool} " "$summary" || { echo "::error::summary.txt missing '${tool}' row"; exit 1; }
+          done
+          echo "E2E assertions passed."
+
+      - name: Upload E2E reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-reports
+          path: templates/reports/**
+          if-no-files-found: warn
+          retention-days: 14
