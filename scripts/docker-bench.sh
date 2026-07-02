@@ -3,11 +3,18 @@
 # Implements CIS Docker Benchmark checks without installing anything on the host.
 #
 # Usage:
-#   ./scripts/docker-bench.sh [container-name-pattern]
+#   ./scripts/docker-bench.sh [container-name-pattern] [reports-dir]
+#
+# Arguments:
+#   container-name-pattern   Focus checks on containers matching this name (optional)
+#   reports-dir              Directory where the report is written
+#                            (default: security/templates/reports).
+#                            scan-full-dockerized.sh passes its session directory.
 #
 # Examples:
 #   ./scripts/docker-bench.sh                  # check all containers
 #   ./scripts/docker-bench.sh myapp            # focus on containers matching 'myapp'
+#   ./scripts/docker-bench.sh "" /tmp/reports  # all containers, custom reports dir
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +32,7 @@ source "$SECURITY_ROOT/versions.env"
 [[ -n "${BENCH_VERSION:-}" ]] || die "BENCH_VERSION is unset — versions.env not loaded properly"
 
 BENCH_IMAGE="docker/docker-bench-security:${BENCH_VERSION}"
-REPORTS_DIR="$SECURITY_ROOT/templates/reports"
+REPORTS_DIR="${2:-$SECURITY_ROOT/templates/reports}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 REPORT_FILE="$REPORTS_DIR/docker-bench_${TIMESTAMP}.log"
 

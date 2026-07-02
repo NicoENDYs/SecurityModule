@@ -60,10 +60,8 @@ jobs:
             # Re-source updated versions
             source versions.env
 
-            # Sync docker/docker-compose.yml
-            sed -i "s|ghcr.io/zaproxy/zaproxy:[0-9.]*|ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}|" docker/docker-compose.yml
-            sed -i "s|aquasec/trivy:[0-9.]*|aquasec/trivy:${TRIVY_VERSION}|"                   docker/docker-compose.yml
-            sed -i "s|returntocorp/semgrep:[0-9.]*|returntocorp/semgrep:${SEMGREP_VERSION}|"   docker/docker-compose.yml
+            # docker/docker-compose.yml needs no sync: it interpolates
+            # ${TRIVY_VERSION} etc. from versions.env via the docker/.env symlink.
 
             # Sync .github/workflows/ci.yml (semgrep unit-test step)
             sed -i "s|returntocorp/semgrep:[0-9.]*|returntocorp/semgrep:${SEMGREP_VERSION}|"   .github/workflows/ci.yml
