@@ -1,26 +1,29 @@
-name: Update v1 floating tag
+name: Update floating version tags
 
-# Keeps the floating major tag `v1` pointing at the latest 1.x release, so
-# `uses: nicoendys/securitymodule/...@v1` and the `module-ref: v1` defaults in
-# the reusable workflows always resolve.
+# Keeps the floating tags `v1` (major) and `v1.<minor>` pointing at the latest
+# matching release, so `uses: nicoendys/securitymodule/...@v1` and the
+# `module-ref: v1` defaults in the reusable workflows always resolve to the
+# newest 1.x release without editing anything.
 #
-# - Runs automatically whenever a 1.x release tag (e.g. 1.5.0) is pushed:
-#   v1 is moved to that tag's commit.
-# - Can also be run manually (Actions → "Update v1 floating tag" → Run
-#   workflow) to create or repair v1. By default it points v1 at the ref the
-#   workflow was dispatched from (normally main); pass `target-ref` to point
-#   it somewhere else (a tag name or commit SHA).
+# Release tags use the `vMAJOR.MINOR.PATCH` form (e.g. v1.7.0).
 #
-# Note: pushes made with GITHUB_TOKEN do not trigger new workflow runs, and
-# `v1` itself does not match the `1.*` tag filter, so this cannot recurse.
+# - Runs automatically whenever a `vX.Y.Z` release tag is pushed: `vX` and
+#   `vX.Y` are moved to that tag's commit.
+# - Can also be run manually (Actions → "Update floating version tags" → Run
+#   workflow). By default it promotes the highest existing `vX.Y.Z` tag; pass
+#   `release-tag` to promote a specific one (e.g. to bootstrap `v1` now).
+#
+# No recursion: the floating tags (`v1`, `v1.7`) are one/two-part and do not
+# match the three-part `vX.Y.Z` trigger, and GITHUB_TOKEN pushes don't trigger
+# workflows anyway.
 on:
   push:
     tags:
-      - "1.*"
+      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
     inputs:
-      target-ref:
-        description: "Ref v1 should point to (tag or SHA; default: the ref this run was dispatched from)"
+      release-tag:
+        description: "Release tag to promote (e.g. v1.7.0). Default: the highest vX.Y.Z tag."
         required: false
         type: string
         default: ""
@@ -29,8 +32,8 @@ permissions:
   contents: write
 
 jobs:
-  move-v1:
-    name: Point v1 at ${{ inputs.target-ref || github.ref_name }}
+  move-floating-tags:
+    name: Move floating tags
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history + tags)
@@ -38,19 +41,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create or move the v1 tag
+      - name: Create or move floating tags
         env:
-          TARGET: ${{ inputs.target-ref || github.ref_name }}
+          INPUT_TAG: ${{ inputs.release-tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          SHA=$(git rev-parse --verify --quiet "refs/tags/${TARGET}^{commit}" \
-             || git rev-parse --verify --quiet "${TARGET}^{commit}" \
-             || git rev-parse --verify "origin/${TARGET}^{commit}")
-          echo "Pointing v1 at ${TARGET} (${SHA})"
-          git tag -f v1 "$SHA"
-          git push origin refs/tags/v1 --force
+
+          # Resolve which release tag to promote: explicit input → the pushed
+          # tag → the highest vX.Y.Z tag in the repo.
+          REL="$INPUT_TAG"
+          if [ -z "$REL" ] && [ "$REF_TYPE" = "tag" ]; then REL="$REF_NAME"; fi
+          if [ -z "$REL" ]; then
+            REL="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)"
+          fi
+          [ -n "$REL" ] || { echo "::error::no vX.Y.Z release tag found"; exit 1; }
+
+          case "$REL" in
+            v[0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::unexpected tag format '$REL' (expected vMAJOR.MINOR.PATCH)"; exit 1 ;;
+          esac
+
+          SHA=$(git rev-parse --verify "refs/tags/${REL}^{commit}")
+          MAJOR="${REL%%.*}"   # v1.7.0 -> v1
+          MINOR="${REL%.*}"    # v1.7.0 -> v1.7
+
+          for FLOAT in "$MAJOR" "$MINOR"; do
+            git tag -f "$FLOAT" "$SHA"
+            git push origin "refs/tags/${FLOAT}" --force
+            echo "Pointed ${FLOAT} at ${REL} (${SHA})"
+          done
+
           {
-            echo "### 🏷️ v1 floating tag updated"
+            echo "### 🏷️ Floating tags updated"
             echo ""
-            echo "\`v1\` now points at \`${TARGET}\` (\`${SHA}\`)."
+            echo "\`${MAJOR}\` and \`${MINOR}\` now point at \`${REL}\` (\`${SHA}\`)."
           } >> "$GITHUB_STEP_SUMMARY"

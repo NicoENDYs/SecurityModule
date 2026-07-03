@@ -291,15 +291,16 @@ git add security
 git commit -m "chore(security): update security-testing-template submodule"
 ```
 
-Para fijar el submódulo a un commit o tag específico (los tags de release **no
-llevan prefijo `v`**: `1.4.0`, `1.3.5`, …):
+Para fijar el submódulo a un tag específico. Los tags de release usan la forma
+**`vMAJOR.MINOR.PATCH`** (ej. `v1.7.0`); además hay tags flotantes `v1` (última
+1.x) y `v1.7` (último parche 1.7.x) que se actualizan solos:
 
 ```bash
 cd security
-git checkout 1.4.0
+git checkout v1.7.0   # o v1 / v1.7 para seguir la última automáticamente
 cd ..
 git add security
-git commit -m "chore(security): pin submodule to 1.4.0"
+git commit -m "chore(security): pin submodule to v1.7.0"
 ```
 
 ---

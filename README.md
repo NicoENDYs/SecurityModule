@@ -1,6 +1,8 @@
 # security-testing-template
 
-![CI](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml/badge.svg)](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/tag/NicoENDYs/SecurityModule?filter=v*.*.*&sort=semver&label=release)](https://github.com/NicoENDYs/SecurityModule/tags)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Docs language note:** Detailed guides in [`docs/`](docs/) are written in Spanish intentionally (the primary audience is the original team). The README and all scripts are in English for broader accessibility.
 
@@ -62,7 +64,7 @@ security-testing-template/
 │   │   ├── zap-baseline.yml          # Reusable ZAP DAST workflow
 │   │   ├── ci.yml                    # Self-validation: lint + rule tests + self-scan + E2E
 │   │   ├── update-versions.yml       # Weekly PR bumping pinned versions/digests
-│   │   └── update-v1-tag.yml         # Keeps the floating `v1` tag on the latest 1.x release
+│   │   └── update-v1-tag.yml         # Moves floating tags v1 / v1.x to the latest vX.Y.Z release
 │   ├── ISSUE_TEMPLATE/               # Bug report + feature request + security contact
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── dependabot.yml
@@ -338,19 +340,25 @@ docker run --rm -v "$(pwd)":/src -v "$(pwd)/security/node-web/semgrep.yml":/semg
 
 | Ref | Recommended use |
 |-----|-----------------|
-| `@v1` | Floating tag → latest stable 1.x release — **recommended** |
-| `@1.4.0` | Pinned to a specific release (compliance environments) |
+| `@v1` | Floating **major** tag → latest 1.x release — **recommended** |
+| `@v1.7` | Floating **minor** tag → latest 1.7.x patch |
+| `@v1.7.0` | Pinned to an exact release (compliance environments) |
 | `@main` | Bleeding edge — **not recommended** for production |
 
-> **Note:** release tags have **no `v` prefix** (`1.4.0`, `1.3.5`, …). The only
-> `v`-prefixed ref is the floating major tag `v1`, which always points to the
-> latest 1.x release. The `update-v1-tag.yml` workflow moves `v1` automatically
-> whenever a `1.x` tag is pushed (and can be dispatched manually to create it).
+Release tags use the standard **`vMAJOR.MINOR.PATCH`** form (e.g. `v1.7.0`). Two
+floating tags track the latest automatically, so consumers pinning `@v1` never
+need to touch anything:
+
+- **`v1`** always points to the newest 1.x release.
+- **`v1.7`** always points to the newest 1.7.x patch.
+
+The `update-v1-tag.yml` workflow moves both whenever a `vX.Y.Z` tag is pushed
+(and can be dispatched manually — e.g. to create `v1` for the first time).
 
 When using as a submodule, pin to a tag:
 ```bash
-cd security && git checkout 1.4.0 && cd ..
-git add security && git commit -m "chore(security): pin to 1.4.0"
+cd security && git checkout v1.7.0 && cd ..
+git add security && git commit -m "chore(security): pin to v1.7.0"
 ```
 
 ---
