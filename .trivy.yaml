@@ -31,10 +31,6 @@ checks:
   - secret
   - misconfig
 
-# Secret scanning
-secret:
-  config: ""
-
 # Output
 format: table
 # Override with --format sarif in CI
