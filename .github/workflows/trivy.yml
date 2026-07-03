@@ -61,7 +61,7 @@ jobs:
           path: .security-module
 
       - name: Run Trivy — filesystem scan
-        uses: aquasecurity/trivy-action@18f2505d82a6b8627de8d67e056a0e7db864cfe6 # v0.31.0
+        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -89,12 +89,15 @@ jobs:
       - name: Upload Trivy FS scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         if: always()
+        # Non-blocking: repos without Code Scanning enabled (e.g. private repos
+        # without GitHub Advanced Security) still get the scan + job summary.
+        continue-on-error: true
         with:
           sarif_file: "trivy-fs-results.sarif"
           category: "trivy-filesystem"
 
       - name: Run Trivy — table output (PR comment preview)
-        uses: aquasecurity/trivy-action@18f2505d82a6b8627de8d67e056a0e7db864cfe6 # v0.31.0
+        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -113,7 +116,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Run Trivy — image scan
-        uses: aquasecurity/trivy-action@18f2505d82a6b8627de8d67e056a0e7db864cfe6 # v0.31.0
+        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
         with:
           scan-type: "image"
           image-ref: ${{ inputs.image-ref }}
@@ -126,6 +129,7 @@ jobs:
       - name: Upload Trivy image scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         if: always()
+        continue-on-error: true   # non-blocking if Code Scanning is disabled
         with:
           sarif_file: "trivy-image-results.sarif"
           category: "trivy-image"
@@ -138,7 +142,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Run Trivy — config scan (IaC misconfigurations)
-        uses: aquasecurity/trivy-action@18f2505d82a6b8627de8d67e056a0e7db864cfe6 # v0.31.0
+        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
         with:
           scan-type: "config"
           scan-ref: "."
@@ -150,6 +154,7 @@ jobs:
       - name: Upload Trivy config scan results
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         if: always()
+        continue-on-error: true   # non-blocking if Code Scanning is disabled
         with:
           sarif_file: "trivy-config-results.sarif"
           category: "trivy-config"

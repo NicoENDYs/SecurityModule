@@ -96,6 +96,7 @@ jobs:
       - name: Upload SARIF (Semgrep)
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         if: always()
+        continue-on-error: true   # non-blocking if Code Scanning is disabled
         with:
           sarif_file: semgrep.sarif
           category: semgrep

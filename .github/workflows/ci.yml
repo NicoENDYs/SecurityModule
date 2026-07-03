@@ -154,3 +154,39 @@ jobs:
           path: templates/reports/**
           if-no-files-found: warn
           retention-days: 14
+
+  # ── Dogfood the REUSABLE workflows via workflow_call ──────────────────────────
+  # The self-scan/e2e jobs above exercise the local scripts; these run the actual
+  # reusable workflows consumers call, against this repo. They catch failures the
+  # scripts can't — e.g. an unresolvable action SHA, or a wrong SARIF filename —
+  # which are invisible until a real consumer invokes the workflow.
+  # `module-ref`/`trivy-config` point at this PR's own code (not the published
+  # v1 tag), so a change is validated before release.
+
+  reusable-trivy:
+    name: Dogfood — reusable Trivy workflow
+    uses: ./.github/workflows/trivy.yml
+    with:
+      trivy-config: .trivy.yaml   # this repo ships its own; skips the module checkout
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  reusable-secret-iac:
+    name: Dogfood — reusable Secret & IaC workflow
+    uses: ./.github/workflows/secret-iac.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  reusable-semgrep:
+    name: Dogfood — reusable Semgrep workflow
+    uses: ./.github/workflows/semgrep.yml
+    with:
+      module-ref: ${{ github.head_ref || github.ref_name }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
