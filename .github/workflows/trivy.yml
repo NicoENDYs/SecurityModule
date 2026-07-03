@@ -2,6 +2,12 @@ name: Trivy Security Scan
 
 # This workflow is designed exclusively for workflow_call (reusable).
 # It does NOT run on push/PR/schedule in this repo — those triggers live in ci.yml.
+#
+# Trivy runs via the pinned aquasec/trivy Docker image (version from the
+# module's versions.env), consistent with the rest of the module. The previous
+# implementation used aquasecurity/trivy-action, which downloads the Trivy
+# binary at run time (setup-trivy + install.sh) — that download failed on the
+# runner and produced no SARIF. Docker avoids that fragility entirely.
 on:
   workflow_call:
     inputs:
@@ -26,7 +32,7 @@ on:
         type: string
         default: ""
       module-ref:
-        description: "Git ref of NicoENDYs/SecurityModule to source the default .trivy.yaml from"
+        description: "Git ref of NicoENDYs/SecurityModule to source versions.env + the default .trivy.yaml from"
         required: false
         type: string
         default: "v1"
@@ -50,27 +56,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # The default Trivy config ships with SecurityModule, not with the consumer
-      # repo — check the module out so the config path below always exists.
-      - name: Checkout SecurityModule (default .trivy.yaml lives here)
-        if: ${{ inputs.trivy-config == '' }}
+      # versions.env (Trivy image tag) and the default .trivy.yaml both ship with
+      # SecurityModule, not with the consumer repo — check the module out.
+      - name: Checkout SecurityModule (versions.env + default .trivy.yaml)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: NicoENDYs/SecurityModule
           ref: ${{ inputs.module-ref || 'v1' }}
           path: .security-module
 
-      - name: Run Trivy — filesystem scan
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
-        with:
-          scan-type: "fs"
-          scan-ref: "."
-          trivy-config: ${{ inputs.trivy-config || '.security-module/.trivy.yaml' }}
-          severity: ${{ inputs.severity || 'HIGH,CRITICAL' }}
-          exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
-          ignore-unfixed: true
-          format: "sarif"
-          output: "trivy-fs-results.sarif"
+      - name: Run Trivy — filesystem scan (via Docker)
+        env:
+          SEVERITY: ${{ inputs.severity || 'HIGH,CRITICAL' }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+          TRIVY_CONFIG_INPUT: ${{ inputs.trivy-config }}
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION="$(sed -n 's/^TRIVY_VERSION=//p' .security-module/versions.env)"
+          [ -n "$TRIVY_VERSION" ] || { echo "::error::TRIVY_VERSION not found in versions.env"; exit 1; }
+          CFG="${TRIVY_CONFIG_INPUT:-.security-module/.trivy.yaml}"
+          EXIT_CODE="0"; [ "$FAIL_ON_FINDINGS" = "true" ] && EXIT_CODE="1"
+          docker run --rm -w /project -v "$PWD":/project \
+            "aquasec/trivy:${TRIVY_VERSION}" fs \
+              --config "$CFG" \
+              --severity "$SEVERITY" \
+              --exit-code "$EXIT_CODE" \
+              --ignore-unfixed \
+              --format sarif \
+              --output /project/trivy-fs-results.sarif \
+              .
 
       - name: Parse critical count from SARIF
         id: parse
@@ -96,35 +110,37 @@ jobs:
           sarif_file: "trivy-fs-results.sarif"
           category: "trivy-filesystem"
 
-      - name: Run Trivy — table output (PR comment preview)
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
-        with:
-          scan-type: "fs"
-          scan-ref: "."
-          trivy-config: ${{ inputs.trivy-config || '.security-module/.trivy.yaml' }}
-          severity: ${{ inputs.severity || 'HIGH,CRITICAL' }}
-          exit-code: "0"
-          ignore-unfixed: true
-          format: "table"
-
   trivy-image:
     name: Docker Image Scan
     runs-on: ubuntu-latest
     if: ${{ inputs.image-ref != '' }}
     steps:
-      - name: Checkout repository
+      - name: Checkout SecurityModule (versions.env)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Run Trivy — image scan
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
         with:
-          scan-type: "image"
-          image-ref: ${{ inputs.image-ref }}
-          severity: ${{ inputs.severity || 'HIGH,CRITICAL' }}
-          exit-code: ${{ inputs.fail-on-findings && '1' || '0' }}
-          ignore-unfixed: true
-          format: "sarif"
-          output: "trivy-image-results.sarif"
+          repository: NicoENDYs/SecurityModule
+          ref: ${{ inputs.module-ref || 'v1' }}
+          path: .security-module
+
+      - name: Run Trivy — image scan (via Docker)
+        env:
+          SEVERITY: ${{ inputs.severity || 'HIGH,CRITICAL' }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+          IMAGE_REF: ${{ inputs.image-ref }}
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION="$(sed -n 's/^TRIVY_VERSION=//p' .security-module/versions.env)"
+          [ -n "$TRIVY_VERSION" ] || { echo "::error::TRIVY_VERSION not found in versions.env"; exit 1; }
+          EXIT_CODE="0"; [ "$FAIL_ON_FINDINGS" = "true" ] && EXIT_CODE="1"
+          docker run --rm -w /project -v "$PWD":/project \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            "aquasec/trivy:${TRIVY_VERSION}" image \
+              --severity "$SEVERITY" \
+              --exit-code "$EXIT_CODE" \
+              --ignore-unfixed \
+              --format sarif \
+              --output /project/trivy-image-results.sarif \
+              "$IMAGE_REF"
 
       - name: Upload Trivy image scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
@@ -141,15 +157,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Run Trivy — config scan (IaC misconfigurations)
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37 # v0.31.0
+      - name: Checkout SecurityModule (versions.env + default .trivy.yaml)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          scan-type: "config"
-          scan-ref: "."
-          severity: ${{ inputs.severity || 'HIGH,CRITICAL' }}
-          exit-code: "0"
-          format: "sarif"
-          output: "trivy-config-results.sarif"
+          repository: NicoENDYs/SecurityModule
+          ref: ${{ inputs.module-ref || 'v1' }}
+          path: .security-module
+
+      - name: Run Trivy — config scan (IaC misconfigurations, via Docker)
+        env:
+          SEVERITY: ${{ inputs.severity || 'HIGH,CRITICAL' }}
+          TRIVY_CONFIG_INPUT: ${{ inputs.trivy-config }}
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION="$(sed -n 's/^TRIVY_VERSION=//p' .security-module/versions.env)"
+          [ -n "$TRIVY_VERSION" ] || { echo "::error::TRIVY_VERSION not found in versions.env"; exit 1; }
+          CFG="${TRIVY_CONFIG_INPUT:-.security-module/.trivy.yaml}"
+          docker run --rm -w /project -v "$PWD":/project \
+            "aquasec/trivy:${TRIVY_VERSION}" config \
+              --config "$CFG" \
+              --severity "$SEVERITY" \
+              --exit-code 0 \
+              --format sarif \
+              --output /project/trivy-config-results.sarif \
+              .
 
       - name: Upload Trivy config scan results
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
