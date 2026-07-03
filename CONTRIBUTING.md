@@ -37,6 +37,12 @@ Every PR must pass `ci.yml` (see the Actions tab). It runs:
 | **ShellCheck** | All bash scripts (`scripts/*.sh`, `node-web/audit.sh`, `setup.sh`) | `shellcheck --source-path=SCRIPTDIR -x scripts/*.sh node-web/audit.sh setup.sh` |
 | **actionlint** | Workflow syntax in `.github/workflows/` (includes ShellCheck on every `run:` block) | `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest` |
 | **Semgrep rule tests** | Every fixture in `node-web/tests/` against the full ruleset | See [Adding a Semgrep rule](#adding-a-semgrep-rule) |
+| **self-scan** | The module's own scanners (`scan-trivy.sh fs`, `scan-secrets.sh git`) run cleanly against this repo — catches script regressions | `bash scripts/scan-trivy.sh fs "$PWD" && bash scripts/scan-secrets.sh git "$PWD"` |
+| **e2e** | `scan-full-dockerized.sh` runs end to end against a throwaway target and produces a `summary.txt` | Needs Docker; see the `e2e` job in `ci.yml` |
+
+The **self-scan** and **e2e** jobs are the module dogfooding itself: they run the
+detection scripts and the full orchestrator, so a break in the scripts fails CI
+even when the lint jobs are green. If you change a script, expect these to exercise it.
 
 Notes that save review round-trips:
 

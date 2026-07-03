@@ -36,7 +36,8 @@ bash security/scripts/scan-full-dockerized.sh \
 
 # 2. O pasos individuales
 bash security/scripts/scan-trivy.sh fs .
-bash security/scripts/scan-trivy.sh image mi-app:latest
+bash security/scripts/scan-trivy.sh image mi-app:latest   # + SBOM CycloneDX
+bash security/scripts/scan-secrets.sh git .               # secretos en el historial (Gitleaks)
 bash security/scripts/scan-zap-baseline.sh http://localhost:3000
 bash security/scripts/docker-bench.sh
 bash security/node-web/audit.sh .
@@ -80,7 +81,9 @@ variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""
   STAGING_URL: "https://staging.example.com"   # ajusta o pasa como variable CI/CD
-  TRIVY_VERSION: "0.61.0"
+  # Mantén estas versiones alineadas con security/versions.env (nunca uses :latest ni :stable).
+  TRIVY_VERSION: "0.71.1"
+  ZAP_VERSION: "2.17.0"
 
 # ── SAST: npm audit + Semgrep ──────────────────────────────────────────────────
 sast:
@@ -171,7 +174,7 @@ trivy-fs:
 # ── ZAP DAST baseline ─────────────────────────────────────────────────────────
 zap-baseline:
   stage: dast
-  image: ghcr.io/zaproxy/zaproxy:stable
+  image: ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}   # tag fijo, nunca :stable
   variables:
     GIT_STRATEGY: none   # no clona, solo usa la imagen ZAP
   before_script:
@@ -246,8 +249,8 @@ pipelines:
           - image.tar
 
     - step:
-        name: Trivy — Image Scan
-        image: aquasec/trivy:0.61.0
+        name: Trivy — Image Scan (+ SBOM)
+        image: aquasec/trivy:0.71.1   # alinea con security/versions.env
         script:
           - trivy image
               --exit-code 0
@@ -256,14 +259,17 @@ pipelines:
               --output trivy-report.json
               --input image.tar
           - trivy image --severity HIGH,CRITICAL --format table --input image.tar
+          # SBOM CycloneDX (cumplimiento NTIA / EU CRA)
+          - trivy image --format cyclonedx --output sbom.cdx.json --input image.tar
         artifacts:
           - trivy-report.json
+          - sbom.cdx.json
 
   branches:
     main:   # solo en main se lanza DAST
       - step:
           name: ZAP DAST Baseline
-          image: ghcr.io/zaproxy/zaproxy:stable
+          image: ghcr.io/zaproxy/zaproxy:2.17.0   # tag fijo, nunca :stable
           script:
             - zap-baseline.py
                 -t "${STAGING_URL}"

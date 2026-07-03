@@ -88,14 +88,17 @@ Los reportes se guardan en `security/templates/reports/`.
 ### 3.2 Escaneo de vulnerabilidades en contenedores (Trivy)
 
 ```bash
-# Escaneo del sistema de archivos del proyecto
+# Escaneo del sistema de archivos del proyecto (vulnerabilidades + secretos)
 bash security/scripts/scan-trivy.sh fs .
 
-# Escaneo de una imagen Docker
+# Escaneo de una imagen Docker (genera además un SBOM CycloneDX: *.sbom.cdx.json)
 bash security/scripts/scan-trivy.sh image tu-imagen:tag
 
 # Escaneo de un repositorio remoto
 bash security/scripts/scan-trivy.sh repo https://github.com/org/repo
+
+# Escaneo de secretos en el historial git (equivalente a scan-secrets.sh, vía Trivy)
+bash security/scripts/scan-trivy.sh git-history .
 ```
 
 ### 3.3 Escaneo de secretos en el historial git (Gitleaks)
@@ -116,9 +119,26 @@ Los reportes SARIF se guardan en `security/templates/reports/`.
 # Escaneo pasivo (baseline) — recomendado para CI/CD
 bash security/scripts/scan-zap-baseline.sh https://staging.tu-app.com
 
-# Escaneo activo (más intrusivo, usar solo en entornos controlados)
+# Pasivo + ajax spider (para SPAs/React) — sigue siendo pasivo, no envía payloads
 bash security/scripts/scan-zap-baseline.sh https://staging.tu-app.com ajax
+
+# Escaneo ACTIVO (envía payloads de ataque) — solo contra sistemas que te pertenecen
+I_OWN_THIS_TARGET=yes bash security/scripts/scan-zap-baseline.sh https://staging.tu-app.com full
 ```
+
+**Escaneo autenticado** (login por formulario, vía el ZAP Automation Framework):
+
+```bash
+bash security/scripts/scan-zap-baseline.sh \
+  --zap-auth-url https://app.tu-app.com/login \
+  --zap-auth-user admin --zap-auth-pass "$PASSWORD" \
+  https://app.tu-app.com
+```
+
+> El plan generado contiene las credenciales: se escribe con permisos `600` y se
+> borra al terminar. Verifica siempre que el login funcionó (revisa la salida y
+> confirma páginas autenticadas en el reporte). En modo autenticado no se aplican
+> los filtros de `rules.tsv`.
 
 ### 3.5 Auditoría de configuración Docker
 
@@ -167,12 +187,17 @@ jobs:
       actions: read
 
   # ── Trivy: escaneo de dependencias, filesystem e IaC ──────────────────────
+  # Usa por defecto el .trivy.yaml incluido en el módulo — tu repo no necesita
+  # el suyo. Opcional: image-ref para escanear una imagen, trivy-config para tu
+  # propia configuración.
   trivy:
     name: Trivy Vulnerability Scan
     uses: nicoendys/securitymodule/.github/workflows/trivy.yml@v1
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
+      # image-ref: "ghcr.io/tu-org/tu-imagen:${{ github.sha }}"
+      # trivy-config: ".trivy.yaml"
     permissions:
       contents: read
       security-events: write
@@ -266,15 +291,16 @@ git add security
 git commit -m "chore(security): update security-testing-template submodule"
 ```
 
-Para fijar el submódulo a un commit o tag específico (los tags de release **no
-llevan prefijo `v`**: `1.4.0`, `1.3.5`, …):
+Para fijar el submódulo a un tag específico. Los tags de release usan la forma
+**`vMAJOR.MINOR.PATCH`** (ej. `v1.7.0`); además hay tags flotantes `v1` (última
+1.x) y `v1.7` (último parche 1.7.x) que se actualizan solos:
 
 ```bash
 cd security
-git checkout 1.4.0
+git checkout v1.7.0   # o v1 / v1.7 para seguir la última automáticamente
 cd ..
 git add security
-git commit -m "chore(security): pin submodule to 1.4.0"
+git commit -m "chore(security): pin submodule to v1.7.0"
 ```
 
 ---

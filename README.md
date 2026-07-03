@@ -1,6 +1,8 @@
 # security-testing-template
 
-![CI](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml/badge.svg)](https://github.com/NicoENDYs/SecurityModule/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/tag/NicoENDYs/SecurityModule?filter=v*.*.*&sort=semver&label=release)](https://github.com/NicoENDYs/SecurityModule/tags)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Docs language note:** Detailed guides in [`docs/`](docs/) are written in Spanish intentionally (the primary audience is the original team). The README and all scripts are in English for broader accessibility.
 
@@ -10,6 +12,20 @@ A reusable security-testing scaffold designed to be added as a **Git submodule**
 - Local scan scripts (Trivy, ZAP, Gitleaks, Docker Bench) that run via Docker — no host installs needed
 - Reusable GitHub Actions workflows (Semgrep SAST + Trivy + Secret/IaC + ZAP) callable with `workflow_call`
 - Semgrep SAST rules tailored for JavaScript / TypeScript / React
+- **DAST with optional form authentication** (ZAP Automation Framework)
+- **CycloneDX SBOM** generation for scanned images
+- **Supply-chain hardening**: all tool and base images pinned (by digest where mutable), refreshed weekly, single-sourced from `versions.env`
+
+Detection coverage at a glance:
+
+| Layer | Tool | What it catches |
+|-------|------|-----------------|
+| SAST | Semgrep | Dangerous code patterns (injection, XSS, weak crypto, hardcoded secrets) in JS/TS/React |
+| SCA + IaC | Trivy | Vulnerable dependencies, image CVEs, Dockerfile/Compose misconfigurations, + a CycloneDX SBOM |
+| Secrets | Gitleaks | Credentials leaked across the full git history |
+| IaC policy | Checkov | Broader infrastructure-as-code policy violations |
+| DAST | OWASP ZAP | Vulnerabilities in the running app (baseline, ajax, or authenticated active scan) |
+| Runtime | Docker Bench | CIS Docker Benchmark checks on the daemon and containers |
 
 > **🚀 New to security scanning?** Start with the beginner-friendly, jargon-light
 > walkthrough: [`docs/guia-principiantes.md`](docs/guia-principiantes.md). It gets
@@ -22,28 +38,43 @@ A reusable security-testing scaffold designed to be added as a **Git submodule**
 ```text
 security-testing-template/
 ├── setup.sh                          # One-shot scaffold script
+├── versions.env                      # Single source of truth for all pinned image versions/digests
+├── .trivy.yaml                       # Default Trivy config (severity, skip-dirs, scanners)
+├── CONTRIBUTING.md                   # Contribution workflow + CI quality bar
+├── CHANGELOG.md · SECURITY.md · LICENSE
 ├── checklists/
 │   ├── owasp-wstg-web.md             # OWASP WSTG v4.2 full checklist
 │   ├── api-security.md               # OWASP API Security Top 10 (2023)
 │   └── docker-hardening.md           # CIS Docker Benchmark v1.6
 ├── scripts/
-│   ├── scan-full-dockerized.sh       # Orchestrator: build → trivy → compose up → ZAP → bench → summary
-│   ├── scan-trivy.sh                 # Local Trivy scan (fs | image | repo)
-│   ├── scan-zap-baseline.sh          # Local ZAP baseline or full scan
-│   └── docker-bench.sh               # Docker Bench for Security
+│   ├── scan-full-dockerized.sh       # Orchestrator: SAST → trivy → compose up → ZAP → bench → summary
+│   ├── scan-trivy.sh                 # Local Trivy scan (fs | image (+SBOM) | repo | git-history)
+│   ├── scan-secrets.sh               # Local Gitleaks secret scan (git | dir)
+│   ├── scan-zap-baseline.sh          # Local ZAP scan (baseline | ajax | full; optional auth)
+│   ├── docker-bench.sh               # Docker Bench for Security (CI-aware)
+│   └── cleanup-reports.sh            # Prune old report directories
 ├── templates/
 │   ├── zap/rules.tsv                 # ZAP alert filter rules
-│   └── reports/                      # Output directory for all scan reports
-├── .github/workflows/
-│   ├── semgrep.yml                   # Reusable Semgrep SAST workflow
-│   ├── trivy.yml                     # Reusable Trivy workflow
-│   ├── secret-iac.yml               # Reusable Gitleaks + Checkov workflow
-│   └── zap-baseline.yml              # Reusable ZAP DAST workflow
+│   └── reports/                      # Output directory for all scan reports (git-ignored)
+├── .github/
+│   ├── workflows/
+│   │   ├── semgrep.yml               # Reusable Semgrep SAST workflow
+│   │   ├── trivy.yml                 # Reusable Trivy workflow (fs + image + config)
+│   │   ├── secret-iac.yml            # Reusable Gitleaks + Checkov workflow
+│   │   ├── zap-baseline.yml          # Reusable ZAP DAST workflow
+│   │   ├── ci.yml                    # Self-validation: lint + rule tests + self-scan + E2E
+│   │   ├── update-versions.yml       # Weekly PR bumping pinned versions/digests
+│   │   └── update-v1-tag.yml         # Moves floating tags v1 / v1.x to the latest vX.Y.Z release
+│   ├── ISSUE_TEMPLATE/               # Bug report + feature request + security contact
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── dependabot.yml
 ├── node-web/
 │   ├── semgrep.yml                   # Semgrep rules for JS/TS/React
-│   └── audit.sh                      # npm audit + Semgrep via Docker
+│   ├── audit.sh                      # npm audit + Semgrep via Docker
+│   └── tests/                        # Annotated fixtures validating every Semgrep rule
 ├── docker/
-│   └── docker-compose.yml            # Isolated security lab
+│   ├── docker-compose.yml            # Isolated security lab (versions from versions.env)
+│   └── .env                          # Symlink → ../versions.env (Compose interpolation)
 ├── dast/
 │   └── zap-full-scan.conf            # ZAP active scan configuration
 └── docs/
@@ -85,26 +116,45 @@ This single command: runs SAST → builds the image → scans it with Trivy → 
 ### 3. Run individual scans
 
 ```bash
-bash security/scripts/scan-trivy.sh fs .        # filesystem
-bash security/scripts/scan-trivy.sh image app:latest  # Docker image
+bash security/scripts/scan-trivy.sh fs .              # filesystem (vulns + secrets)
+bash security/scripts/scan-trivy.sh image app:latest  # Docker image (+ CycloneDX SBOM)
+bash security/scripts/scan-trivy.sh git-history .      # secrets across git history
 ```
 
-Reports are saved to `security/templates/reports/`.
+Reports are saved to `security/templates/reports/`. The `image` mode also writes
+`<report>.sbom.cdx.json` (a CycloneDX SBOM) next to the vulnerability report.
 
-### 4. Run a ZAP baseline scan against a staging URL
+### 4. Scan git history for leaked secrets (Gitleaks)
 
 ```bash
-bash security/scripts/scan-zap-baseline.sh https://staging.example.com
+bash security/scripts/scan-secrets.sh git .   # full history (needs a complete clone)
+bash security/scripts/scan-secrets.sh dir .   # working tree only
 ```
 
-### 5. Run npm audit + Semgrep on your project
+### 5. Run a ZAP scan against a staging URL
+
+```bash
+bash security/scripts/scan-zap-baseline.sh https://staging.example.com          # passive baseline
+bash security/scripts/scan-zap-baseline.sh https://staging.example.com ajax      # + ajax spider (SPAs)
+
+# Authenticated scan (form login, via the ZAP Automation Framework):
+bash security/scripts/scan-zap-baseline.sh \
+  --zap-auth-url https://app.example.com/login \
+  --zap-auth-user admin --zap-auth-pass "$PASSWORD" \
+  https://app.example.com
+```
+
+> Active scanning sends attack payloads — it requires explicit consent
+> (`I_OWN_THIS_TARGET=yes … full`). Only run it against systems you own.
+
+### 6. Run npm audit + Semgrep on your project
 
 ```bash
 # From your project root
 bash security/node-web/audit.sh .
 ```
 
-### 6. Run Docker Bench for Security
+### 7. Run Docker Bench for Security
 
 ```bash
 bash security/scripts/docker-bench.sh
@@ -168,11 +218,17 @@ jobs:
     with:
       severity: "HIGH,CRITICAL"
       fail-on-findings: false
+      # image-ref: "ghcr.io/you/app:${{ github.sha }}"  # optional: also scan a built image
+      # trivy-config: ".trivy.yaml"                       # optional: your own config (defaults to the module's)
     permissions:
       contents: read
       security-events: write
       actions: read
 ```
+
+The filesystem scan uses the `.trivy.yaml` shipped with this module by default —
+your repo doesn't need its own copy. Pass `trivy-config` to override it, or
+`image-ref` to additionally scan a built image.
 
 ### Secret & IaC scan in your project CI
 
@@ -221,7 +277,7 @@ All checklists use markdown checkboxes. Work through them during threat modellin
 
 ## Report Location
 
-All scan scripts write reports to `security/templates/reports/`. This directory is listed in `.gitignore` by convention — reports are ephemeral build artifacts, not source.
+All scan scripts write reports to `security/templates/reports/` (git-ignored — reports are ephemeral build artifacts, not source). The orchestrator groups each run under a `run_TIMESTAMP/` subdirectory containing `summary.txt` plus every tool's output; the Trivy `image` mode adds a CycloneDX SBOM (`*.sbom.cdx.json`).
 
 To browse HTML reports locally:
 
@@ -230,6 +286,28 @@ docker compose -f security/docker/docker-compose.yml --profile reports up -d
 open http://localhost:8888
 ```
 
+Prune old runs with `bash security/scripts/cleanup-reports.sh --keep-last 7`.
+
+---
+
+## Supply chain & versions
+
+`versions.env` is the **single source of truth** for every pinned image:
+
+- Tool images (Trivy, ZAP, Semgrep, Gitleaks, Checkov, Docker Bench) are pinned to exact version tags.
+- Base images (`nginx:alpine`, `node:22-alpine`) are pinned by **`@sha256:` digest** — mutable tags can't silently change what runs.
+- `docker/docker-compose.yml` reads these values through the `docker/.env` symlink, so nothing is duplicated.
+- `update-versions.yml` opens a weekly PR that bumps tool versions and refreshes base-image digests from the Docker Hub API.
+
+## Self-validation (dogfooding)
+
+`ci.yml` doesn't just lint the module — it runs the module against itself on every PR/push:
+
+- **self-scan** — `scan-trivy.sh` + `scan-secrets.sh` over this repository.
+- **e2e** — the full `scan-full-dockerized.sh` orchestrator against a throwaway target, asserting a structured `summary.txt` is produced.
+
+So a regression in the scripts fails CI here before it can reach a consumer.
+
 ---
 
 ## Semgrep Rules
@@ -237,20 +315,23 @@ open http://localhost:8888
 The `node-web/semgrep.yml` rules cover:
 
 - `eval()` / `new Function()` — arbitrary code execution
-- Command injection via `child_process`
-- SQL injection string concatenation
+- Command injection via `child_process` (CJS, ESM named + namespace imports)
+- SQL injection: string concatenation and Prisma `$queryRaw` interpolation
 - Hardcoded JWT secrets and credentials
 - Dangerous React patterns (`dangerouslySetInnerHTML`, `javascript:` hrefs)
+- Reflected XSS: raw user input in Express `res.send` / Fastify `reply.send`
 - Weak cryptography (`MD5`, `SHA-1`, `Math.random()`)
-- Path traversal from user input
+- Path traversal (`path.join`, `fs.readFile`/`writeFile` with user input)
 - Prototype pollution
-- Wildcard CORS
+- Wildcard CORS (Express and Fastify)
 
-Run Semgrep standalone (requires Docker):
+Every rule has an annotated test fixture in `node-web/tests/`, validated by CI.
+
+Run Semgrep standalone (requires Docker; the tag lives in `versions.env`):
 
 ```bash
 docker run --rm -v "$(pwd)":/src -v "$(pwd)/security/node-web/semgrep.yml":/semgrep.yml \
-  returntocorp/semgrep semgrep --config /semgrep.yml /src
+  returntocorp/semgrep:1.166.0 semgrep --config /semgrep.yml /src
 ```
 
 ---
@@ -259,18 +340,25 @@ docker run --rm -v "$(pwd)":/src -v "$(pwd)/security/node-web/semgrep.yml":/semg
 
 | Ref | Recommended use |
 |-----|-----------------|
-| `@v1` | Floating tag → latest stable 1.x release — **recommended** |
-| `@1.4.0` | Pinned to a specific release (compliance environments) |
+| `@v1` | Floating **major** tag → latest 1.x release — **recommended** |
+| `@v1.7` | Floating **minor** tag → latest 1.7.x patch |
+| `@v1.7.0` | Pinned to an exact release (compliance environments) |
 | `@main` | Bleeding edge — **not recommended** for production |
 
-> **Note:** release tags have **no `v` prefix** (`1.4.0`, `1.3.5`, …). The only
-> `v`-prefixed ref is the floating major tag `v1`, which always points to the
-> latest 1.x release.
+Release tags use the standard **`vMAJOR.MINOR.PATCH`** form (e.g. `v1.7.0`). Two
+floating tags track the latest automatically, so consumers pinning `@v1` never
+need to touch anything:
+
+- **`v1`** always points to the newest 1.x release.
+- **`v1.7`** always points to the newest 1.7.x patch.
+
+The `update-v1-tag.yml` workflow moves both whenever a `vX.Y.Z` tag is pushed
+(and can be dispatched manually — e.g. to create `v1` for the first time).
 
 When using as a submodule, pin to a tag:
 ```bash
-cd security && git checkout 1.4.0 && cd ..
-git add security && git commit -m "chore(security): pin to 1.4.0"
+cd security && git checkout v1.7.0 && cd ..
+git add security && git commit -m "chore(security): pin to v1.7.0"
 ```
 
 ---

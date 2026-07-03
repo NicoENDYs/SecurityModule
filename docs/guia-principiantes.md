@@ -313,6 +313,14 @@ git add security && git commit -m "chore(security): actualizar módulo"
 Sí. Edita `security/node-web/semgrep.yml` siguiendo el mismo formato, o crea tu
 propio archivo y pásalo con `--config`.
 
+**¿Y si mi app tiene login?**
+Puedes escanear las páginas autenticadas pasando tus credenciales a ZAP. Ver la
+sección de escaneo autenticado en [`proyecto-dockerizado.md`](proyecto-dockerizado.md).
+
+**¿Qué es el archivo `*.sbom.cdx.json` que aparece?**
+Es un **SBOM** (inventario de todas las dependencias de tu imagen, en formato
+CycloneDX). Lo genera el escaneo de imagen y sirve para auditorías/cumplimiento.
+
 ---
 
 ## Glosario sin tecnicismos
@@ -327,6 +335,7 @@ propio archivo y pásalo con `--config`.
 | **CWE** | Una categoría de tipo de fallo (ej. `CWE-79` = XSS). |
 | **Secreto** | Una contraseña, token o clave de API. **Nunca** deben estar escritos en el código. |
 | **SARIF** | El formato estándar de reporte que GitHub entiende para mostrar alertas. |
+| **SBOM** | Inventario de todas las dependencias de tu imagen (aquí en formato CycloneDX), para auditorías y cumplimiento. |
 | **Trivy** | Herramienta que busca vulnerabilidades en dependencias, imágenes y configuraciones. |
 | **Semgrep** | Herramienta que busca patrones peligrosos en tu código fuente. |
 | **Gitleaks** | Herramienta que busca secretos filtrados en tu repositorio. |
@@ -347,7 +356,7 @@ git submodule update --init --recursive
 # ── Escaneos locales ──────────────────────────────────────────────────────────
 bash security/node-web/audit.sh .                     # código + dependencias (rápido)
 bash security/scripts/scan-trivy.sh fs .              # vulnerabilidades del filesystem
-bash security/scripts/scan-trivy.sh image mi-app:tag  # vulnerabilidades de una imagen
+bash security/scripts/scan-trivy.sh image mi-app:tag  # vulnerabilidades de una imagen (+ SBOM)
 bash security/scripts/scan-secrets.sh git .           # secretos en el historial git
 bash security/scripts/scan-zap-baseline.sh https://staging.tu-app.com   # DAST pasivo
 bash security/scripts/docker-bench.sh                 # auditoría de Docker
