@@ -167,7 +167,9 @@ jobs:
     name: Dogfood — reusable Trivy workflow
     uses: ./.github/workflows/trivy.yml
     with:
-      trivy-config: .trivy.yaml   # this repo ships its own; skips the module checkout
+      # Point the module checkout (versions.env + .trivy.yaml) at this PR's own
+      # code, not the published `v1` tag — this validates pre-release changes.
+      module-ref: ${{ github.head_ref || github.ref_name }}
     permissions:
       contents: read
       security-events: write
